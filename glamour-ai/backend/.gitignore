@@ -1,0 +1,17 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+venv/
+venv_windows_backup/
+env/
+.env.example
+
+# Secrets — keep .env out of git
+.env
+
+# Misc
+*.log
+.DS_Store

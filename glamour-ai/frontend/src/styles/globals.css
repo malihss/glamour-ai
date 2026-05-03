@@ -1,0 +1,172 @@
+@import url('https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,500;0,600;0,700;1,400;1,500&family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;1,300;1,400&family=Jost:wght@300;400;500;600&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --font-playfair: 'Playfair Display', Georgia, serif;
+  --font-cormorant: 'Cormorant Garamond', Georgia, serif;
+  --font-jost: 'Jost', Helvetica, sans-serif;
+
+  --color-noir: #0A0A0A;
+  --color-champagne: #C9A96E;
+  --color-champagne-light: #E8D5A3;
+  --color-blush: #E8B4B8;
+  --color-ivory: #FAF7F2;
+  --color-charcoal: #2D2D2D;
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  font-family: var(--font-jost);
+  background-color: var(--color-ivory);
+  color: var(--color-charcoal);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Luxury scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: var(--color-ivory);
+}
+::-webkit-scrollbar-thumb {
+  background: var(--color-champagne);
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--color-champagne-light);
+}
+
+/* Typography utilities */
+.font-display { font-family: var(--font-playfair); }
+.font-serif { font-family: var(--font-cormorant); }
+.font-sans-luxury { font-family: var(--font-jost); }
+
+/* Luxury text gradient */
+.text-gold {
+  background: linear-gradient(135deg, #C9A96E 0%, #E8D5A3 50%, #A07840 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+/* Shimmer loading skeleton */
+@keyframes shimmer {
+  0%   { background-position: -200% 0; }
+  100% { background-position:  200% 0; }
+}
+.skeleton {
+  background: linear-gradient(
+    90deg,
+    #f0ebe3 25%,
+    #e8e0d5 50%,
+    #f0ebe3 75%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 1.5s infinite;
+}
+
+/* Smooth page transitions */
+.page-enter {
+  opacity: 0;
+  transform: translateY(10px);
+}
+.page-enter-active {
+  opacity: 1;
+  transform: translateY(0);
+  transition: opacity 400ms, transform 400ms;
+}
+
+/* Product card hover effects */
+.product-card {
+  transition: transform 0.3s ease, box-shadow 0.3s ease;
+}
+.product-card:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 12px 48px rgba(0, 0, 0, 0.12);
+}
+
+/* Button styles */
+.btn-primary {
+  @apply bg-noir text-ivory font-sans tracking-widest uppercase text-xs
+         px-8 py-4 transition-all duration-300 hover:bg-charcoal
+         focus:outline-none focus:ring-2 focus:ring-champagne focus:ring-offset-2;
+}
+
+.btn-secondary {
+  @apply border border-noir text-noir font-sans tracking-widest uppercase text-xs
+         px-8 py-4 transition-all duration-300 hover:bg-noir hover:text-ivory
+         focus:outline-none focus:ring-2 focus:ring-champagne focus:ring-offset-2;
+}
+
+.btn-gold {
+  @apply bg-champagne text-noir font-sans tracking-widest uppercase text-xs
+         px-8 py-4 transition-all duration-300 hover:bg-champagne-dark
+         focus:outline-none focus:ring-2 focus:ring-champagne focus:ring-offset-2;
+}
+
+/* Input styles */
+.input-luxury {
+  @apply w-full border-0 border-b border-charcoal-soft bg-transparent
+         py-3 px-0 font-sans text-sm text-charcoal placeholder-charcoal-soft
+         focus:outline-none focus:border-champagne transition-colors duration-200;
+}
+
+/* Label for luxury inputs */
+.label-luxury {
+  @apply font-sans text-[10px] tracking-[0.2em] uppercase text-charcoal-soft block mb-2;
+}
+
+/* Badge styles */
+.badge-new {
+  @apply bg-noir text-ivory text-[10px] font-sans tracking-widest 
+         uppercase px-2 py-0.5;
+}
+
+.badge-sale {
+  @apply bg-red-600 text-white text-[10px] font-sans tracking-widest 
+         uppercase px-2 py-0.5;
+}
+
+/* Divider */
+.divider-gold {
+  @apply border-0 border-t border-champagne/30 my-8;
+}
+
+/* Glass morphism */
+.glass {
+  background: rgba(250, 247, 242, 0.8);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid rgba(201, 169, 110, 0.15);
+}
+
+/* Aspect ratio utilities */
+.aspect-product { aspect-ratio: 3/4; }
+.aspect-square-full { aspect-ratio: 1/1; }
+
+/* Section spacing */
+.section-padding {
+  @apply py-16 md:py-24 px-4 md:px-8 lg:px-16;
+}
+
+/* Fade-in animation delay utilities */
+.delay-100 { animation-delay: 100ms; }
+.delay-200 { animation-delay: 200ms; }
+.delay-300 { animation-delay: 300ms; }
+.delay-400 { animation-delay: 400ms; }
+.delay-500 { animation-delay: 500ms; }

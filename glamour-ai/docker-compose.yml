@@ -1,0 +1,79 @@
+version: '3.9'
+
+services:
+  # ── PostgreSQL ─────────────────────────────────────────────────────────
+  postgres:
+    image: postgres:15-alpine
+    container_name: glamour_postgres
+    environment:
+      POSTGRES_DB: glamour_ai
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: glamour_password
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./database/migrations:/docker-entrypoint-initdb.d/migrations
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ── Backend Flask API ──────────────────────────────────────────────────
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: glamour_backend
+    environment:
+      DATABASE_URL: postgresql://postgres:glamour_password@postgres:5432/glamour_ai
+      SECRET_KEY: dev-secret-key-change-in-production
+      JWT_SECRET_KEY: dev-jwt-secret-change-in-production
+      AI_SERVICE_URL: http://ai-services:5001
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      FLASK_ENV: development
+    ports:
+      - "5000:5000"
+    volumes:
+      - ./backend:/app
+    depends_on:
+      postgres:
+        condition: service_healthy
+    command: python app.py
+
+  # ── AI Services ────────────────────────────────────────────────────────
+  ai-services:
+    build:
+      context: ./ai-services
+      dockerfile: Dockerfile
+    container_name: glamour_ai_services
+    environment:
+      FLASK_ENV: development
+    ports:
+      - "5001:5001"
+    volumes:
+      - ./ai-services:/app
+    command: python server.py
+
+  # ── Frontend Next.js ───────────────────────────────────────────────────
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: glamour_frontend
+    environment:
+      NEXT_PUBLIC_API_URL: http://localhost:5000/api
+      NEXT_PUBLIC_AI_URL: http://localhost:5001
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+      - /app/.next
+    depends_on:
+      - backend
+    command: npm run dev
+
+volumes:
+  postgres_data:
