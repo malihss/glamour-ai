@@ -158,6 +158,7 @@ class Product(db.Model):
             'sku': self.sku,
             'stockQuantity': self.stock_quantity,
             'isFeatured': self.is_featured,
+            'isActive': self.is_active,
             'tags': self.tags or [],
             'primaryImage': self.primary_image(),
             'avgRating': self.avg_rating(),

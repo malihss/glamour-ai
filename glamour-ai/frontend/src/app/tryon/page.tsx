@@ -1,9 +1,9 @@
 'use client'
 
 import { useState, useRef, useEffect, useCallback } from 'react'
-import { Camera, CameraOff, RefreshCw, Download, Sparkles, X, Loader2, Wand2 } from 'lucide-react'
+import { Camera, CameraOff, RefreshCw, Download, Sparkles, X, Loader2, Wand2, ShoppingBag, ChevronDown, ChevronUp } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { tryonAPI } from '@/lib/api'
+import Link from 'next/link'
 import toast from 'react-hot-toast'
 
 // ── MediaPipe landmark indices ────────────────────────────────────────────────
@@ -12,17 +12,12 @@ const LIP_UP_IN   = [78,191,80,81,82,13,312,311,310,415,308]
 const LIP_LO_OUT  = [61,146,91,181,84,17,314,405,321,375,291]
 const LIP_LO_IN   = [78,95,88,178,87,14,317,402,318,324,308]
 
-// Full eye outline (upper + lower)
 const L_EYE_FULL  = [33,246,161,160,159,158,157,173,133,155,154,153,145,144,163,7]
 const R_EYE_FULL  = [263,466,388,387,386,385,384,398,362,382,381,380,374,373,390,249]
 
-// Strictly the upper eyelid arc — topmost points only (lash line)
-// Left: inner corner → peak → outer corner along the TOP lid
 const L_LASH      = [33,246,161,160,159,158,157,173,133]
-// Right: inner corner → peak → outer corner along the TOP lid
 const R_LASH      = [263,466,388,387,386,385,384,398,362]
 
-// Eyebrow landmarks for mascara/liner reference
 const L_BROW      = [70,63,105,66,107,55,65,52,53,46]
 const R_BROW      = [300,293,334,296,336,285,295,282,283,276]
 
@@ -43,8 +38,7 @@ function hex2rgb(hex: string): [number,number,number] {
   return [(n>>16)&255, (n>>8)&255, n&255]
 }
 
-// Draw a soft blurred layer: draw sharp on offscreen, blur when compositing onto main canvas
-// This is the correct two-pass technique — avoids white-square artifacts from oc.filter
+// Two-pass blit: draw on offscreen, blur + composite onto main canvas
 function blitBlurred(
   ctx: CanvasRenderingContext2D,
   oc: CanvasRenderingContext2D,
@@ -67,7 +61,47 @@ function blitBlurred(
   ctx.filter = 'none'
 }
 
-// ── Makeup renderer (runs every frame) ───────────────────────────────────────
+// Smooth quadratic bezier path through a list of points (midpoint algorithm)
+function smoothPath(c: CanvasRenderingContext2D, points: [number,number][], close = false) {
+  if (!points.length) return
+  c.moveTo(points[0][0], points[0][1])
+  for (let i = 0; i < points.length - 1; i++) {
+    const mx = (points[i][0] + points[i + 1][0]) * 0.5
+    const my = (points[i][1] + points[i + 1][1]) * 0.5
+    c.quadraticCurveTo(points[i][0], points[i][1], mx, my)
+  }
+  if (close) {
+    const n = points.length - 1
+    const mx = (points[n][0] + points[0][0]) * 0.5
+    const my = (points[n][1] + points[0][1]) * 0.5
+    c.quadraticCurveTo(points[n][0], points[n][1], mx, my)
+  } else {
+    c.lineTo(points[points.length - 1][0], points[points.length - 1][1])
+  }
+}
+
+// Draw a lip section (outer edge forward, inner edge reversed) as smooth closed path
+function lipShape(c: CanvasRenderingContext2D, outer: [number,number][], inner: [number,number][]) {
+  const rev = [...inner].reverse()
+  const all = [...outer, ...rev]
+  c.beginPath()
+  c.moveTo(all[0][0], all[0][1])
+  for (let i = 0; i < all.length - 1; i++) {
+    const mx = (all[i][0] + all[i + 1][0]) * 0.5
+    const my = (all[i][1] + all[i + 1][1]) * 0.5
+    c.quadraticCurveTo(all[i][0], all[i][1], mx, my)
+  }
+  c.closePath()
+}
+
+// ── Makeup renderer ───────────────────────────────────────────────────────────
+//
+// Realism key: CSS 'color' blend mode (non-separable) uses H+S of the source
+// colour but keeps the LIGHTNESS of the destination — so skin texture, pores,
+// lip lines and natural highlight/shadow all show through the pigment, exactly
+// like real makeup on skin.  Depth passes still use 'multiply'; specular
+// highlights use 'screen'.
+//
 function renderMakeup(
   ctx: CanvasRenderingContext2D,
   oc: CanvasRenderingContext2D,
@@ -78,137 +112,216 @@ function renderMakeup(
   const faceW = Math.abs(lms[454].x - lms[234].x) * w
 
   // ── FOUNDATION ─────────────────────────────────────────────────────────────
+  // 'color' tints skin with chosen shade while preserving every luminosity
+  // variation (wrinkles, highlights, pores) — no mask effect
   const fd = makeup.foundation
   if (fd) {
     const [r,g,b] = hex2rgb(fd.hex)
-    blitBlurred(ctx, oc, 14, 'multiply', fd.opacity * 0.4, (c) => {
+    blitBlurred(ctx, oc, 20, 'color', fd.opacity * 0.60, (c) => {
       const fp = pts(lms, FACE, w, h)
-      c.beginPath()
-      fp.forEach(([x,y],i) => i===0 ? c.moveTo(x,y) : c.lineTo(x,y))
-      c.closePath()
-      c.fillStyle = `rgb(${r},${g},${b})`
-      c.fill()
+      c.beginPath(); smoothPath(c, fp, true)
+      c.fillStyle = `rgb(${r},${g},${b})`; c.fill()
+    })
+    // Soft-light pass adds a subtle luminosity evening without covering texture
+    blitBlurred(ctx, oc, 26, 'soft-light', fd.opacity * 0.18, (c) => {
+      const fp = pts(lms, FACE, w, h)
+      c.beginPath(); smoothPath(c, fp, true)
+      c.fillStyle = `rgb(${r},${g},${b})`; c.fill()
     })
   }
 
-  // ── BRONZER / CONTOUR ──────────────────────────────────────────────────────
+  // ── CONTOUR ────────────────────────────────────────────────────────────────
+  // Dual pass like blush: 'color' deposits shade on skin (texture preserved),
+  // 'multiply' adds depth/shadow so it merges naturally with surrounding makeup
   const cn = makeup.contour
   if (cn) {
     const [r,g,b] = hex2rgb(cn.hex)
-    blitBlurred(ctx, oc, Math.max(12, faceW * 0.10), 'multiply', 1, (c) => {
+    const drawContour = (c: CanvasRenderingContext2D) => {
       const [lox, loy] = lmxy(lms, 234, w, h)
       const [lix, liy] = lmxy(lms, 93,  w, h)
-      const lcx = lox * 0.45 + lix * 0.55
-      const lcy = (loy + liy) * 0.5 + faceW * 0.03
+      const lcx = lox * 0.40 + lix * 0.60
+      const lcy = (loy + liy) * 0.5 + faceW * 0.02
       const [rox, roy] = lmxy(lms, 454, w, h)
       const [rix, riy] = lmxy(lms, 323, w, h)
-      const rcx = rox * 0.45 + rix * 0.55
-      const rcy = (roy + riy) * 0.5 + faceW * 0.03
-      const rx = faceW * 0.20
-      const ry = faceW * 0.07
-      c.save(); c.translate(lcx, lcy); c.rotate(-0.30)
-      c.fillStyle = `rgba(${r},${g},${b},${cn.opacity * 1.6})`
+      const rcx = rox * 0.40 + rix * 0.60
+      const rcy = (roy + riy) * 0.5 + faceW * 0.02
+      const rx = faceW * 0.22
+      const ry = faceW * 0.065
+      c.save(); c.translate(lcx, lcy); c.rotate(-0.25)
+      const lg = c.createRadialGradient(0,0,0, 0,0,rx)
+      lg.addColorStop(0, `rgba(${r},${g},${b},1.0)`)
+      lg.addColorStop(1, `rgba(${r},${g},${b},0)`)
+      c.fillStyle = lg
       c.beginPath(); c.ellipse(0,0,rx,ry,0,0,Math.PI*2); c.fill(); c.restore()
-      c.save(); c.translate(rcx, rcy); c.rotate(0.30)
-      c.fillStyle = `rgba(${r},${g},${b},${cn.opacity * 1.6})`
+      c.save(); c.translate(rcx, rcy); c.rotate(0.25)
+      const rg2 = c.createRadialGradient(0,0,0, 0,0,rx)
+      rg2.addColorStop(0, `rgba(${r},${g},${b},1.0)`)
+      rg2.addColorStop(1, `rgba(${r},${g},${b},0)`)
+      c.fillStyle = rg2
       c.beginPath(); c.ellipse(0,0,rx,ry,0,0,Math.PI*2); c.fill(); c.restore()
       const [ltx, lty] = lmxy(lms, 21, w, h)
       const [rtx, rty] = lmxy(lms, 251, w, h)
-      const tr = faceW * 0.10
-      c.fillStyle = `rgba(${r},${g},${b},${cn.opacity * 0.8})`
-      c.beginPath(); c.ellipse(ltx, lty, tr, tr*0.6, -0.3, 0, Math.PI*2); c.fill()
-      c.beginPath(); c.ellipse(rtx, rty, tr, tr*0.6,  0.3, 0, Math.PI*2); c.fill()
-    })
+      const tr = faceW * 0.08
+      const tg = c.createRadialGradient(ltx,lty,0, ltx,lty,tr)
+      tg.addColorStop(0, `rgba(${r},${g},${b},0.90)`)
+      tg.addColorStop(1, `rgba(${r},${g},${b},0)`)
+      c.fillStyle = tg
+      c.beginPath(); c.ellipse(ltx, lty, tr, tr*0.7, -0.3, 0, Math.PI*2); c.fill()
+      const tg2 = c.createRadialGradient(rtx,rty,0, rtx,rty,tr)
+      tg2.addColorStop(0, `rgba(${r},${g},${b},0.90)`)
+      tg2.addColorStop(1, `rgba(${r},${g},${b},0)`)
+      c.fillStyle = tg2
+      c.beginPath(); c.ellipse(rtx, rty, tr, tr*0.7, 0.3, 0, Math.PI*2); c.fill()
+    }
+    blitBlurred(ctx, oc, Math.max(16, faceW * 0.12), 'color',      cn.opacity * 0.72, drawContour)
+    blitBlurred(ctx, oc, Math.max(14, faceW * 0.10), 'soft-light', cn.opacity * 0.58, drawContour)
   }
 
   // ── BLUSH ──────────────────────────────────────────────────────────────────
+  // 'color' blend: deposits the hue+sat of the blush shade on the cheeks while
+  // skin luminosity (veins, texture, natural flush) shows through.
   const bl = makeup.blush
   if (bl) {
     const [r,g,b] = hex2rgb(bl.hex)
-    const rad = faceW * 0.20
-    blitBlurred(ctx, oc, Math.max(8, rad * 0.6), 'soft-light', 1, (c) => {
-      ;([[lms[116].x*w, lms[116].y*h],[lms[345].x*w, lms[345].y*h]] as [number,number][])
-        .forEach(([cx,cy]) => {
-          const g2 = c.createRadialGradient(cx, cy, 0, cx, cy, rad)
-          g2.addColorStop(0,   `rgba(${r},${g},${b},${bl.opacity * 2.0})`)
-          g2.addColorStop(0.5, `rgba(${r},${g},${b},${bl.opacity * 1.0})`)
-          g2.addColorStop(1,   `rgba(${r},${g},${b},0)`)
-          c.fillStyle = g2
-          c.beginPath()
-          c.ellipse(cx, cy, rad, rad * 0.75, 0, 0, Math.PI * 2)
-          c.fill()
-        })
+    const rad = faceW * 0.22
+    const [lbx, lby] = lmxy(lms, 116, w, h)
+    const [rbx, rby] = lmxy(lms, 345, w, h)
+    const centers: [number,number][] = [[lbx, lby + faceW*0.01], [rbx, rby + faceW*0.01]]
+
+    // Primary: color blend for precise realistic tint
+    blitBlurred(ctx, oc, Math.max(12, rad * 0.70), 'color', bl.opacity * 0.82, (c) => {
+      centers.forEach(([cx,cy]) => {
+        const g2 = c.createRadialGradient(cx, cy, 0, cx, cy, rad)
+        g2.addColorStop(0,    `rgba(${r},${g},${b},1.0)`)
+        g2.addColorStop(0.40, `rgba(${r},${g},${b},0.65)`)
+        g2.addColorStop(1,    `rgba(${r},${g},${b},0)`)
+        c.fillStyle = g2
+        c.beginPath(); c.ellipse(cx, cy, rad, rad * 0.72, 0, 0, Math.PI * 2); c.fill()
+      })
+    })
+    // Soft-light for warmth/glow over skin — blends naturally
+    blitBlurred(ctx, oc, Math.max(18, rad * 1.0), 'soft-light', bl.opacity * 0.55, (c) => {
+      centers.forEach(([cx,cy]) => {
+        const g2 = c.createRadialGradient(cx, cy, 0, cx, cy, rad * 1.1)
+        g2.addColorStop(0,   `rgba(${r},${g},${b},0.90)`)
+        g2.addColorStop(0.5, `rgba(${r},${g},${b},0.45)`)
+        g2.addColorStop(1,   `rgba(${r},${g},${b},0)`)
+        c.fillStyle = g2
+        c.beginPath(); c.ellipse(cx, cy, rad*1.1, rad*0.78, 0, 0, Math.PI * 2); c.fill()
+      })
     })
   }
 
   // ── HIGHLIGHTER ────────────────────────────────────────────────────────────
+  // Dual pass: soft-light builds a natural skin-glow first; screen adds the
+  // actual shimmer/shine on top. This way it reads as lit skin, not metallic.
   const hl = makeup.highlighter
   if (hl) {
     const [r,g,b] = hex2rgb(hl.hex)
-    blitBlurred(ctx, oc, Math.max(4, faceW * 0.04), 'screen', hl.opacity * 1.1, (c) => {
+    const drawHL = (c: CanvasRenderingContext2D, str: number) => {
       const [lhx, lhy] = lmxy(lms, 116, w, h)
       const [rhx, rhy] = lmxy(lms, 345, w, h)
       const [nbx, nby] = lmxy(lms, 6,   w, h)
       const [lbx, lby] = lmxy(lms, 107, w, h)
       const [rbx, rby] = lmxy(lms, 336, w, h)
       const [cbx, cby] = lmxy(lms, 0,   w, h)
-      const spots: [[number,number], number, number][] = [
-        [[lhx, lhy - faceW*0.02], faceW*0.09, faceW*0.055],
-        [[rhx, rhy - faceW*0.02], faceW*0.09, faceW*0.055],
-        [[nbx, nby],              faceW*0.025, faceW*0.025],
-        [[lbx, lby],              faceW*0.05,  faceW*0.03],
-        [[rbx, rby],              faceW*0.05,  faceW*0.03],
-        [[cbx, cby - faceW*0.01], faceW*0.025, faceW*0.015],
+      const spots: [[number,number], number, number, number][] = [
+        [[lhx, lhy - faceW*0.025], faceW*0.110, faceW*0.070, str * 1.0],
+        [[rhx, rhy - faceW*0.025], faceW*0.110, faceW*0.070, str * 1.0],
+        [[nbx, nby - faceW*0.005], faceW*0.038, faceW*0.038, str * 0.80],
+        [[lbx, lby],               faceW*0.060, faceW*0.036, str * 0.65],
+        [[rbx, rby],               faceW*0.060, faceW*0.036, str * 0.65],
+        [[cbx, cby - faceW*0.015], faceW*0.032, faceW*0.022, str * 0.55],
       ]
-      spots.forEach(([[cx,cy], rx, ry]) => {
+      spots.forEach(([[cx,cy], rx, ry, s]) => {
         const g2 = c.createRadialGradient(cx, cy, 0, cx, cy, Math.max(rx,ry))
-        g2.addColorStop(0,   `rgba(${r},${g},${b},0.95)`)
-        g2.addColorStop(0.4, `rgba(${r},${g},${b},0.5)`)
-        g2.addColorStop(1,   `rgba(${r},${g},${b},0)`)
+        g2.addColorStop(0,    `rgba(${r},${g},${b},${s})`)
+        g2.addColorStop(0.40, `rgba(${r},${g},${b},${s * 0.45})`)
+        g2.addColorStop(1,    `rgba(${r},${g},${b},0)`)
         c.fillStyle = g2
-        c.beginPath()
-        c.ellipse(cx, cy, rx, ry, 0, 0, Math.PI * 2)
-        c.fill()
+        c.beginPath(); c.ellipse(cx, cy, rx, ry, 0, 0, Math.PI * 2); c.fill()
       })
-    })
+    }
+    // Soft-light first: lifts the skin's own luminosity for a natural glow
+    blitBlurred(ctx, oc, Math.max(10, faceW * 0.07), 'soft-light', hl.opacity * 0.70, (c) => drawHL(c, 1.0))
+    // Screen second: adds visible shimmer/highlight on top, much more subtle
+    blitBlurred(ctx, oc, Math.max(6,  faceW * 0.04), 'screen',     hl.opacity * 0.55, (c) => drawHL(c, 0.80))
   }
 
   // ── EYESHADOW ──────────────────────────────────────────────────────────────
-  // Strictly on the upper eyelid strip — lash line up to crease, nowhere else
+  // Three-layer approach:
+  //   1. multiply depth at lash line (darkens for eye socket shadow)
+  //   2. color blend for the actual shade tint (skin texture shows through)
+  //   3. screen for metallic/shimmer sheen
   const ey = makeup.eyeshadow
   if (ey) {
     const [r,g,b] = hex2rgb(ey.hex)
-    blitBlurred(ctx, oc, Math.max(3, faceW * 0.025), 'multiply', 1, (c) => {
-      ;([
-        [L_LASH, L_EYE_FULL],
-        [R_LASH, R_EYE_FULL],
-      ] as [number[], number[]][]).forEach(([lashIdx, fullIdx]) => {
-        const lashPts = pts(lms, lashIdx, w, h)
-        const fullPts = pts(lms, fullIdx, w, h)
-        const eyeMinY  = Math.min(...fullPts.map(p => p[1]))
-        const eyeMaxY  = Math.max(...fullPts.map(p => p[1]))
-        const eyeH     = eyeMaxY - eyeMinY
-        const lcx      = lashPts.reduce((s,p) => s+p[0], 0) / lashPts.length
-        const lashTopY = Math.min(...lashPts.map(p => p[1]))
-        const creaseY  = lashTopY - eyeH * 1.4
-        c.save()
+    ;([
+      [L_LASH, L_BROW, L_EYE_FULL],
+      [R_LASH, R_BROW, R_EYE_FULL],
+    ] as [number[], number[], number[]][]).forEach(([lashIdx, browIdx, fullIdx]) => {
+      const lashPts     = pts(lms, lashIdx, w, h)
+      const browPts     = pts(lms, browIdx, w, h)
+      const eyeFullPts  = pts(lms, fullIdx, w, h)
+
+      const lashTopY    = Math.min(...lashPts.map(p => p[1]))
+      const browBottomY = Math.max(...browPts.map(p => p[1]))
+      const eyeBottomY  = Math.max(...eyeFullPts.map(p => p[1]))
+      const creaseY     = lashTopY - (lashTopY - browBottomY) * 0.55
+
+      const midX        = lashPts.reduce((s, p) => s + p[0], 0) / lashPts.length
+      const innerCorner = lashPts[0]
+      const outerCorner = lashPts[lashPts.length - 1]
+      const minX        = Math.min(...lashPts.map(p => p[0])) - 6
+      const maxW        = Math.max(...lashPts.map(p => p[0])) - minX + 6 + 6
+
+      // Helper: clip canvas to the arch-shaped eye socket region
+      const clipArch = (c: CanvasRenderingContext2D) => {
         c.beginPath()
-        lashPts.forEach(([x,y],i) => i===0 ? c.moveTo(x,y) : c.lineTo(x,y))
-        c.lineTo(lashPts[lashPts.length-1][0], creaseY)
-        c.lineTo(lashPts[0][0], creaseY)
+        smoothPath(c, lashPts, false)
+        c.quadraticCurveTo((midX + outerCorner[0]) * 0.5, creaseY, midX, creaseY - faceW * 0.008)
+        c.quadraticCurveTo((midX + innerCorner[0]) * 0.5, creaseY, innerCorner[0], innerCorner[1])
         c.closePath()
         c.clip()
-        const grad = c.createLinearGradient(lcx, eyeMaxY, lcx, creaseY)
-        grad.addColorStop(0,    `rgba(${r},${g},${b},${ey.opacity * 1.8})`)
-        grad.addColorStop(0.35, `rgba(${r},${g},${b},${ey.opacity * 1.2})`)
+      }
+
+      // Layer 1 — depth: multiply darkens lash-line area for socket shadow
+      blitBlurred(ctx, oc, Math.max(3, faceW * 0.012), 'multiply', ey.opacity * 0.55, (c) => {
+        c.save(); clipArch(c)
+        const grad = c.createLinearGradient(midX, eyeBottomY + 2, midX, lashTopY - faceW * 0.03)
+        grad.addColorStop(0,    `rgba(${r},${g},${b},1.0)`)
+        grad.addColorStop(0.22, `rgba(${r},${g},${b},0.65)`)
+        grad.addColorStop(0.55, `rgba(${r},${g},${b},0.20)`)
         grad.addColorStop(1,    `rgba(${r},${g},${b},0)`)
         c.fillStyle = grad
-        c.fillRect(
-          Math.min(...lashPts.map(p=>p[0])) - 4,
-          creaseY - 2,
-          Math.max(...lashPts.map(p=>p[0])) - Math.min(...lashPts.map(p=>p[0])) + 8,
-          eyeMaxY - creaseY + 4
-        )
+        c.fillRect(minX, creaseY - 6, maxW, eyeBottomY - creaseY + 12)
+        c.restore()
+      })
+
+      // Layer 2 — color: tints eyelid with chosen shade, skin texture preserved
+      blitBlurred(ctx, oc, Math.max(5, faceW * 0.026), 'color', ey.opacity * 0.88, (c) => {
+        c.save(); clipArch(c)
+        const grad = c.createLinearGradient(midX, eyeBottomY + 2, midX, creaseY - 2)
+        grad.addColorStop(0,    `rgba(${r},${g},${b},1.0)`)
+        grad.addColorStop(0.32, `rgba(${r},${g},${b},0.88)`)
+        grad.addColorStop(0.68, `rgba(${r},${g},${b},0.42)`)
+        grad.addColorStop(1,    `rgba(${r},${g},${b},0)`)
+        c.fillStyle = grad
+        c.fillRect(minX, creaseY - 6, maxW, eyeBottomY - creaseY + 12)
+        c.restore()
+      })
+
+      // Layer 3 — shimmer: screen blend for metallic/sparkle sheen
+      blitBlurred(ctx, oc, Math.max(2, faceW * 0.010), 'screen', ey.opacity * 0.22, (c) => {
+        c.save(); clipArch(c)
+        // Concentrated centre-lid highlight
+        const hlY = lashTopY - (lashTopY - browBottomY) * 0.18
+        const g2  = c.createRadialGradient(midX, hlY, 0, midX, hlY, faceW * 0.07)
+        g2.addColorStop(0,    `rgba(${r},${g},${b},0.90)`)
+        g2.addColorStop(0.35, `rgba(${r},${g},${b},0.40)`)
+        g2.addColorStop(1,    'rgba(255,255,255,0)')
+        c.fillStyle = g2
+        c.fillRect(minX, creaseY - 4, maxW, eyeBottomY - creaseY + 8)
         c.restore()
       })
     })
@@ -218,8 +331,9 @@ function renderMakeup(
   const el = makeup.eyeliner
   if (el) {
     const [r,g,b] = hex2rgb(el.hex)
-    const lineW = Math.max(2, faceW * 0.010)
-    blitBlurred(ctx, oc, 0.4, 'multiply', el.opacity, (c) => {
+    // Variable width: thicker at outer corner, finer at inner
+    const lineW = Math.max(2.5, faceW * 0.011)
+    blitBlurred(ctx, oc, 0.3, 'multiply', el.opacity, (c) => {
       ;([
         [L_LASH, 33,  133],
         [R_LASH, 263, 362],
@@ -227,26 +341,52 @@ function renderMakeup(
         const ep    = pts(lms, lashIdx, w, h)
         const outer = lmxy(lms, outerIdx, w, h)
         const inner = lmxy(lms, innerIdx, w, h)
-        c.beginPath()
-        ep.forEach(([x,y],i) => i===0 ? c.moveTo(x,y) : c.lineTo(x,y))
-        c.strokeStyle = `rgb(${r},${g},${b})`
-        c.lineWidth   = lineW
-        c.lineCap     = 'round'
-        c.lineJoin    = 'round'
-        c.stroke()
+
+        // Draw liner with smooth bezier, varying width by segment position
+        for (let i = 0; i < ep.length - 1; i++) {
+          const t    = i / (ep.length - 1)
+          // Thicker near outer corner (t closer to 1 for L_LASH, 0 for R_LASH)
+          const wMult = 0.6 + 0.8 * (1 - t)
+          const mx   = (ep[i][0] + ep[i+1][0]) * 0.5
+          const my   = (ep[i][1] + ep[i+1][1]) * 0.5
+          c.beginPath()
+          c.moveTo(ep[i][0], ep[i][1])
+          c.lineTo(mx, my)
+          c.strokeStyle = `rgb(${r},${g},${b})`
+          c.lineWidth   = lineW * wMult
+          c.lineCap     = 'round'
+          c.lineJoin    = 'round'
+          c.stroke()
+        }
+
+        // Cat-eye wing
         const dx  = outer[0] - inner[0]
         const dy  = outer[1] - inner[1]
         const ang = Math.atan2(dy, dx)
-        const wl  = faceW * 0.045
+        const wl  = faceW * 0.048
+        const upAngle = dx < 0 ? ang + 0.55 : ang - 0.55
         const wingTip: [number,number] = [
-          outer[0] + Math.cos(ang) * wl,
-          outer[1] + Math.sin(ang) * wl - wl * 0.7,
+          outer[0] + Math.cos(upAngle) * wl,
+          outer[1] + Math.sin(upAngle) * wl,
         ]
+        // Filled wing triangle for realistic look
+        c.beginPath()
+        c.moveTo(outer[0], outer[1])
+        c.lineTo(wingTip[0], wingTip[1])
+        const ep2 = ep[ep.length - 2]
+        c.quadraticCurveTo(
+          (outer[0] + ep2[0]) * 0.5 + Math.cos(upAngle - 0.3) * lineW * 1.5,
+          (outer[1] + ep2[1]) * 0.5 + Math.sin(upAngle - 0.3) * lineW * 1.5,
+          ep2[0], ep2[1]
+        )
+        c.fillStyle = `rgb(${r},${g},${b})`
+        c.fill()
+        // Wing stroke
         c.beginPath()
         c.moveTo(outer[0], outer[1])
         c.lineTo(wingTip[0], wingTip[1])
         c.strokeStyle = `rgb(${r},${g},${b})`
-        c.lineWidth   = lineW * 0.7
+        c.lineWidth   = lineW * 0.65
         c.stroke()
       })
     })
@@ -256,22 +396,64 @@ function renderMakeup(
   const ms = makeup.mascara
   if (ms) {
     const [r,g,b] = hex2rgb(ms.hex)
-    const lashW = Math.max(2.5, faceW * 0.012)
-    blitBlurred(ctx, oc, 0.6, 'multiply', ms.opacity, (c) => {
+    const lashW = Math.max(2.5, faceW * 0.011)
+    blitBlurred(ctx, oc, 0.5, 'multiply', ms.opacity, (c) => {
       ;([L_LASH, R_LASH] as number[][]).forEach(lashIdx => {
         const ep = pts(lms, lashIdx, w, h)
-        for (let pass = 0; pass < 3; pass++) {
-          c.beginPath()
-          ep.forEach(([x,y],i) => {
-            const yOff = -pass * (lashW * 0.4)
-            i===0 ? c.moveTo(x, y+yOff) : c.lineTo(x, y+yOff)
-          })
-          c.strokeStyle = `rgba(${r},${g},${b},${0.9 - pass * 0.2})`
-          c.lineWidth   = lashW - pass * 0.5
-          c.lineCap     = 'round'
-          c.lineJoin    = 'round'
-          c.stroke()
+
+        // Base thickening stroke along lash line
+        c.beginPath()
+        smoothPath(c, ep, false)
+        c.strokeStyle = `rgba(${r},${g},${b},0.95)`
+        c.lineWidth   = lashW * 1.1
+        c.lineCap     = 'round'
+        c.lineJoin    = 'round'
+        c.stroke()
+
+        // Dense interpolated lash points — 2× more lashes, no flicker
+        const denseEp: [number,number][] = []
+        for (let i = 0; i < ep.length - 1; i++) {
+          denseEp.push(ep[i])
+          denseEp.push([(ep[i][0] + ep[i+1][0]) * 0.5, (ep[i][1] + ep[i+1][1]) * 0.5])
         }
+        denseEp.push(ep[ep.length - 1])
+
+        denseEp.forEach(([x, y], i) => {
+          const prevPt = denseEp[Math.max(0, i - 1)]
+          const nextPt = denseEp[Math.min(denseEp.length - 1, i + 1)]
+          const tdx = nextPt[0] - prevPt[0]
+          const tdy = nextPt[1] - prevPt[1]
+          const tlen = Math.sqrt(tdx * tdx + tdy * tdy) + 0.001
+          let nx = -tdy / tlen
+          let ny =  tdx / tlen
+          if (ny > 0) { nx = -nx; ny = -ny }
+
+          const variation = 0.45 + 0.55 * Math.abs(Math.sin(i * 1.1 + lashIdx.length * 0.3))
+          const baseLen   = lashW * 3.2
+          const lashLen   = baseLen * variation
+          const t         = i / Math.max(1, denseEp.length - 1)
+          const curlX     = (t - 0.5) * lashW * 1.2
+          const curlUp    = lashLen * 0.10
+
+          // Tip and bezier control point
+          const tipX = x + nx * lashLen * 0.90 + curlX * 1.6
+          const tipY = y + ny * lashLen * 0.88
+          const ctlX = x + nx * lashLen * 0.50 + curlX * 0.55
+          const ctlY = y + ny * lashLen * 0.50 - curlUp
+
+          // Perpendicular to growth direction (ny, -nx) for lash width
+          const pw = lashW * 0.46 * (0.55 + 0.45 * variation)
+          const pHx = ny; const pHy = -nx
+
+          // Tapered filled lash: wide at root, converging to a fine tip
+          c.beginPath()
+          c.moveTo(x - pHx * pw * 0.5, y - pHy * pw * 0.5)
+          c.quadraticCurveTo(ctlX - pHx * pw * 0.20, ctlY - pHy * pw * 0.20, tipX, tipY)
+          c.quadraticCurveTo(ctlX + pHx * pw * 0.20, ctlY + pHy * pw * 0.20, x + pHx * pw * 0.5, y + pHy * pw * 0.5)
+          c.closePath()
+          c.fillStyle = `rgba(${r},${g},${b},${0.90 + 0.10 * variation})`
+          c.fill()
+        })
       })
     })
   }
@@ -280,100 +462,175 @@ function renderMakeup(
   const lp = makeup.lipstick
   if (lp) {
     const [r,g,b] = hex2rgb(lp.hex)
-    blitBlurred(ctx, oc, 1.2, 'multiply', lp.opacity, (c) => {
-      const upOut = pts(lms, LIP_UP_OUT, w, h)
-      const upIn  = pts(lms, LIP_UP_IN,  w, h)
-      c.beginPath()
-      upOut.forEach(([x,y],i) => i===0 ? c.moveTo(x,y) : c.lineTo(x,y))
-      ;[...upIn].reverse().forEach(([x,y]) => c.lineTo(x,y))
-      c.closePath()
-      c.fillStyle = `rgb(${r},${g},${b})`
-      c.fill()
-      const loOut = pts(lms, LIP_LO_OUT, w, h)
-      const loIn  = pts(lms, LIP_LO_IN,  w, h)
-      c.beginPath()
-      loOut.forEach(([x,y],i) => i===0 ? c.moveTo(x,y) : c.lineTo(x,y))
-      ;[...loIn].reverse().forEach(([x,y]) => c.lineTo(x,y))
-      c.closePath()
-      c.fillStyle = `rgb(${r},${g},${b})`
-      c.fill()
+    const upOut = pts(lms, LIP_UP_OUT, w, h)
+    const upIn  = pts(lms, LIP_UP_IN,  w, h)
+    const loOut = pts(lms, LIP_LO_OUT, w, h)
+    const loIn  = pts(lms, LIP_LO_IN,  w, h)
+
+    const drawBothLips = (c: CanvasRenderingContext2D, fillStyle?: string) => {
+      c.fillStyle = fillStyle ?? `rgb(${r},${g},${b})`
+      lipShape(c, upOut, upIn); c.fill()
+      lipShape(c, loOut, loIn); c.fill()
+    }
+
+    // L1 — anchor: source-over at low opacity pins the actual pigment color so it
+    //      isn't entirely at the mercy of the destination lip luminosity
+    blitBlurred(ctx, oc, 0.6, 'source-over', lp.opacity * 0.22, (c) => { drawBothLips(c) })
+
+    // L2 — color blend: overlay hue+saturation while preserving lip texture/shadows
+    blitBlurred(ctx, oc, 0.8, 'color', lp.opacity * 0.82, (c) => { drawBothLips(c) })
+
+    // L3 — saturation: push vibrancy so the color pops even on pale or dark lips
+    blitBlurred(ctx, oc, 1.0, 'saturation', lp.opacity * 0.65, (c) => { drawBothLips(c) })
+
+    // L4 — soft-light: warmth pass to make it feel stained, not painted
+    blitBlurred(ctx, oc, 1.4, 'soft-light', lp.opacity * 0.35, (c) => { drawBothLips(c) })
+
+    // L5 — corner depth: multiply only at lip corners for natural 3-D curvature
+    blitBlurred(ctx, oc, 3.5, 'multiply', lp.opacity * 0.30, (c) => {
+      const dr = Math.max(0, r - 45); const dg2 = Math.max(0, g - 32); const db2 = Math.max(0, b - 32)
+      const cRad = faceW * 0.038
+      ;[upOut[0], upOut[upOut.length - 1], loOut[0], loOut[loOut.length - 1]].forEach(([cx, cy]) => {
+        const grad = c.createRadialGradient(cx, cy, 0, cx, cy, cRad)
+        grad.addColorStop(0,   `rgba(${dr},${dg2},${db2},0.90)`)
+        grad.addColorStop(0.5, `rgba(${dr},${dg2},${db2},0.42)`)
+        grad.addColorStop(1,   'rgba(0,0,0,0)')
+        c.fillStyle = grad
+        c.fillRect(cx - cRad, cy - cRad, cRad * 2, cRad * 2)
+      })
     })
-    blitBlurred(ctx, oc, 2.5, 'screen', 0.45, (c) => {
-      const upOut = pts(lms, LIP_UP_OUT, w, h)
-      const upIn  = pts(lms, LIP_UP_IN,  w, h)
-      const loOut = pts(lms, LIP_LO_OUT, w, h)
-      const loIn  = pts(lms, LIP_LO_IN,  w, h)
+
+    // L6 — gloss highlight: strong oval on lower lip (main catch light), subtle bow on upper
+    blitBlurred(ctx, oc, 1.6, 'screen', lp.opacity * 0.55, (c) => {
       c.save()
-      c.beginPath()
-      upOut.forEach(([x,y],i) => i===0 ? c.moveTo(x,y) : c.lineTo(x,y))
-      ;[...upIn].reverse().forEach(([x,y]) => c.lineTo(x,y))
-      c.closePath()
-      c.beginPath()
-      loOut.forEach(([x,y],i) => i===0 ? c.moveTo(x,y) : c.lineTo(x,y))
-      ;[...loIn].reverse().forEach(([x,y]) => c.lineTo(x,y))
-      c.closePath()
-      c.clip()
-      const cx   = lms[0].x * w
-      const ty   = lms[0].y * h
-      const lipH = Math.max(4, Math.abs(lms[17].y - lms[0].y) * h)
-      const g2   = c.createRadialGradient(cx, ty + lipH*0.15, 0, cx, ty + lipH*0.15, lipH * 2.8)
-      g2.addColorStop(0,   'rgba(255,255,255,0.7)')
-      g2.addColorStop(0.4, 'rgba(255,255,255,0.2)')
-      g2.addColorStop(1,   'rgba(255,255,255,0)')
-      c.fillStyle = g2
-      c.fillRect(cx - lipH*5, ty - lipH, lipH*10, lipH*3)
+      lipShape(c, loOut, loIn); c.clip()
+      const lTop  = Math.min(...loIn.map(p => p[1]))
+      const lBot  = Math.max(...loOut.map(p => p[1]))
+      const lLeft = Math.min(...loOut.map(p => p[0]))
+      const lRight = Math.max(...loOut.map(p => p[0]))
+      const lCx = (lLeft + lRight) * 0.50
+      const lCy = lTop + (lBot - lTop) * 0.34
+      const lRx = (lRight - lLeft) * 0.34
+      const lGrad = c.createRadialGradient(lCx, lCy, 0, lCx, lCy, lRx)
+      lGrad.addColorStop(0,    'rgba(255,255,255,0.92)')
+      lGrad.addColorStop(0.30, 'rgba(255,255,255,0.62)')
+      lGrad.addColorStop(0.65, 'rgba(255,255,255,0.18)')
+      lGrad.addColorStop(1,    'rgba(255,255,255,0)')
+      c.fillStyle = lGrad
+      c.fillRect(lLeft, lTop, lRight - lLeft, lBot - lTop)
       c.restore()
+
+      c.save()
+      lipShape(c, upOut, upIn); c.clip()
+      const uTop  = Math.min(...upOut.map(p => p[1]))
+      const uBot  = Math.max(...upIn.map(p => p[1]))
+      const uLeft = Math.min(...upOut.map(p => p[0]))
+      const uRight = Math.max(...upOut.map(p => p[0]))
+      const uCx = (uLeft + uRight) * 0.50
+      const uCy = uTop + (uBot - uTop) * 0.40
+      const uRx = (uRight - uLeft) * 0.22
+      const uGrad = c.createRadialGradient(uCx, uCy, 0, uCx, uCy, uRx)
+      uGrad.addColorStop(0,    'rgba(255,255,255,0.48)')
+      uGrad.addColorStop(0.50, 'rgba(255,255,255,0.16)')
+      uGrad.addColorStop(1,    'rgba(255,255,255,0)')
+      c.fillStyle = uGrad
+      c.fillRect(uLeft, uTop, uRight - uLeft, uBot - uTop)
+      c.restore()
+    })
+
+    // L7 — liner: crisp edge definition
+    blitBlurred(ctx, oc, 0.3, 'multiply', lp.opacity * 0.52, (c) => {
+      const dr = Math.max(0, r - 28); const dg2 = Math.max(0, g - 20); const db2 = Math.max(0, b - 20)
+      const lineW = Math.max(0.7, faceW * 0.005)
+      c.strokeStyle = `rgb(${dr},${dg2},${db2})`
+      c.lineWidth = lineW; c.lineCap = 'round'; c.lineJoin = 'round'
+      c.beginPath(); smoothPath(c, upOut, false); c.stroke()
+      c.beginPath(); smoothPath(c, loOut, false); c.stroke()
     })
   }
 }
 
-// ── Shade catalogue ───────────────────────────────────────────────────────────
-const SHADES = {
-  lipstick:    { label:'Lipstick',     shades:[
-    {name:'Ruby Red',    hex:'#C41E3A'},{name:'Nude Pink',   hex:'#D4808E'},
-    {name:'Berry Plum',  hex:'#8B1A4A'},{name:'Coral',       hex:'#FF6B6B'},
-    {name:'Brick',       hex:'#9B4448'},{name:'Bordeaux',    hex:'#5C0A14'},
-    {name:'Mauve',       hex:'#B07080'},{name:'Rose Gold',   hex:'#C9706A'},
-  ]},
-  eyeshadow:   { label:'Eyeshadow',    shades:[
-    {name:'Smoky',       hex:'#2E2E2E'},{name:'Rose Gold',   hex:'#B76E79'},
-    {name:'Bronze',      hex:'#8C5A2E'},{name:'Purple',      hex:'#6A0D83'},
-    {name:'Champagne',   hex:'#C8A882'},{name:'Teal',        hex:'#008080'},
-    {name:'Ocean',       hex:'#1C5F8C'},{name:'Nude',        hex:'#C49A6C'},
-  ]},
-  eyeliner:    { label:'Eyeliner',     shades:[
-    {name:'Jet Black',   hex:'#080808'},{name:'Soft Black',  hex:'#1C1A1A'},
-    {name:'Deep Brown',  hex:'#3E1A00'},{name:'Navy',        hex:'#0A1840'},
-    {name:'Teal',        hex:'#005F5F'},{name:'Burgundy',    hex:'#5C001A'},
-  ]},
-  blush:       { label:'Blush',        shades:[
-    {name:'Peachy',      hex:'#FFAA80'},{name:'Rose',        hex:'#D4698A'},
-    {name:'Coral',       hex:'#FF7B54'},{name:'Berry',       hex:'#9B4F7A'},
-    {name:'Terracotta',  hex:'#C1694F'},
-  ]},
-  contour:     { label:'Contour',      shades:[
-    {name:'Light',       hex:'#C8956C'},{name:'Medium',      hex:'#A0663C'},
-    {name:'Deep',        hex:'#6B3320'},{name:'Cool',        hex:'#8B7060'},
-  ]},
-  highlighter: { label:'Highlighter',  shades:[
-    {name:'Gold',        hex:'#FFD060'},{name:'Rose Gold',   hex:'#E8B4A0'},
-    {name:'Champagne',   hex:'#F0D880'},{name:'Pearl',       hex:'#F8F4EE'},
-    {name:'Bronze',      hex:'#CD9040'},
-  ]},
-  foundation:  { label:'Foundation',   shades:[
-    {name:'Porcelain',   hex:'#F5E6D3'},{name:'Fair',        hex:'#EDD5B8'},
-    {name:'Light',       hex:'#D9B99B'},{name:'Medium',      hex:'#C08040'},
-    {name:'Tan',         hex:'#A0663C'},{name:'Deep',        hex:'#6B3320'},
-  ]},
-  mascara:     { label:'Mascara',      shades:[
-    {name:'Jet Black',   hex:'#050505'},{name:'Soft Black',  hex:'#1A1A1A'},
-    {name:'Deep Brown',  hex:'#2C1A0E'},{name:'Navy',        hex:'#0A0F2E'},
-    {name:'Burgundy',    hex:'#3A0010'},
-  ]},
-} as const
+// ── Shade data types ──────────────────────────────────────────────────────────
+interface ShadeData {
+  name: string
+  hex: string
+  productLink: string
+  imageLink?: string
+  productName: string
+  brand: string
+  price: number
+}
+interface ShadeCategory { label: string; shades: ShadeData[] }
 
-type MakeupType = keyof typeof SHADES
-type ShadeEntry = { hex: string; name: string; opacity: number } | null
+// Fallback shades shown instantly while the live API loads
+const FALLBACK_SHADES: Record<string, ShadeCategory> = {
+  lipstick: { label: 'Lipstick', shades: [
+    { name:'Cherry Red',   hex:'#C0172B', productLink:'', productName:'Retro Matte Lipstick Ruby Woo',  brand:'MAC',              price:22  },
+    { name:'Rose Glaze',   hex:'#E8909A', productLink:'', productName:'Soft Pinch Tinted Lip Oil',      brand:'Rare Beauty',      price:22  },
+    { name:'Berry',        hex:'#8A1845', productLink:'', productName:'Audacious Lipstick Dragon Girl',  brand:'NARS',             price:40  },
+    { name:'Coral',        hex:'#F06048', productLink:'', productName:'Poutsicle Lip Stain Coral Reef',  brand:'Fenty Beauty',     price:26  },
+    { name:'Nude',         hex:'#C08070', productLink:'', productName:'Pillow Talk Original Lipstick',   brand:'Charlotte Tilbury',price:38  },
+    { name:'Fuchsia',      hex:'#E0306A', productLink:'', productName:'Pure Color Whipped Matte',        brand:'Estée Lauder',     price:34  },
+    { name:'Mauve Rose',   hex:'#C07090', productLink:'', productName:'Confession Ultra Slim Lipstick',  brand:'Hourglass',        price:36  },
+    { name:'Brown Sugar',  hex:'#9A5848', productLink:'', productName:'Stunna Lip Paint Unlocked',       brand:'Fenty Beauty',     price:26  },
+  ]},
+  eyeshadow: { label: 'Eyeshadow', shades: [
+    { name:'Smoky',      hex:'#2E2E2E', productLink:'', productName:'Luxury Palette Golden Goddess', brand:'Charlotte Tilbury',price:75  },
+    { name:'Rose Gold',  hex:'#B76E79', productLink:'', productName:'Rose Gold Remastered Palette',  brand:'Huda Beauty',      price:67  },
+    { name:'Bronze',     hex:'#8C5A2E', productLink:'', productName:'Naked3 Eyeshadow Palette',      brand:'Urban Decay',      price:54  },
+    { name:'Purple',     hex:'#6A0D83', productLink:'', productName:'Luxury Palette Pillow Talk',    brand:'Charlotte Tilbury',price:75  },
+    { name:'Champagne',  hex:'#C8A882', productLink:'', productName:'Mothership IX Velvet Rose',     brand:'Pat McGrath',      price:125 },
+    { name:'Teal',       hex:'#008080', productLink:'', productName:'Curator Eyeshadow Palette',     brand:'Hourglass',        price:68  },
+    { name:'Ocean',      hex:'#1C5F8C', productLink:'', productName:'Narsissist Wanted Palette',     brand:'NARS',             price:65  },
+    { name:'Nude',       hex:'#C49A6C', productLink:'', productName:'Sweet Peach Eyeshadow Palette', brand:'Too Faced',        price:48  },
+  ]},
+  eyeliner: { label: 'Eyeliner', shades: [
+    { name:'Jet Black',  hex:'#080808', productLink:'', productName:'Stay All Day Liquid Liner',     brand:'Stila',            price:22  },
+    { name:'Soft Black', hex:'#1C1A1A', productLink:'', productName:'Fluidline Eye Liner Gel',       brand:'MAC',              price:22  },
+    { name:'Deep Brown', hex:'#3E1A00', productLink:'', productName:'Le Stylo Waterproof Eyeliner',  brand:'Lancôme',          price:26  },
+    { name:'Navy',       hex:'#0A1840', productLink:'', productName:'Epic Black Mousse Liner',       brand:'NYX',              price:10  },
+    { name:'Teal',       hex:'#005F5F', productLink:'', productName:'Holographic Halo Cream Liner',  brand:'BH Cosmetics',     price:11  },
+    { name:'Burgundy',   hex:'#5C001A', productLink:'', productName:'Faux Blacks Eyeliner',          brand:'Kat Von D',        price:8   },
+  ]},
+  blush: { label: 'Blush', shades: [
+    { name:'Peachy',     hex:'#FFAA80', productLink:'', productName:'Soft Pinch Liquid Blush',       brand:'Rare Beauty',      price:22  },
+    { name:'Rose',       hex:'#D4698A', productLink:'', productName:'Cheek to Chic Blush Pillow Talk',brand:'Charlotte Tilbury',price:45 },
+    { name:'Coral',      hex:'#FF7B54', productLink:'', productName:'Orgasm Blush',                  brand:'NARS',             price:34  },
+    { name:'Berry',      hex:'#9B4F7A', productLink:'', productName:'Sweet Cheeks Blush Palette',    brand:'Too Faced',        price:20  },
+    { name:'Terracotta', hex:'#C1694F', productLink:'', productName:'Baked Blush',                   brand:'e.l.f.',           price:7   },
+  ]},
+  contour: { label: 'Contour', shades: [
+    { name:'Light',      hex:'#C8956C', productLink:'', productName:'Filmstar Bronze & Glow',        brand:'Charlotte Tilbury',price:70  },
+    { name:'Medium',     hex:'#A0663C', productLink:'', productName:'Hoola Matte Bronzer',           brand:'Benefit',          price:36  },
+    { name:'Deep',       hex:'#6B3320', productLink:'', productName:'Matte Bronzer',                 brand:'e.l.f.',           price:9   },
+    { name:'Cool',       hex:'#8B7060', productLink:'', productName:'Chubby Stick Sculpting Contour',brand:'Clinique',         price:23  },
+  ]},
+  highlighter: { label: 'Highlighter', shades: [
+    { name:'Gold',       hex:'#FFD060', productLink:'', productName:'Killawatt Freestyle Highlighter',brand:'Fenty Beauty',     price:40  },
+    { name:'Rose Gold',  hex:'#E8B4A0', productLink:'', productName:'Shimmering Skin Perfector',     brand:'BECCA',            price:38  },
+    { name:'Champagne',  hex:'#F0D880', productLink:'', productName:'Ambient Lighting Powder',       brand:'Hourglass',        price:58  },
+    { name:'Pearl',      hex:'#F8F4EE', productLink:'', productName:'Filmstar Bronze & Glow',        brand:'Charlotte Tilbury',price:70  },
+    { name:'Bronze',     hex:'#CD9040', productLink:'', productName:'Diorskin Nude Air Glow Powder', brand:'Dior',             price:40  },
+  ]},
+  foundation: { label: 'Foundation', shades: [
+    { name:'Porcelain',  hex:'#F5E6D3', productLink:'', productName:'Light Reflecting Foundation',   brand:'NARS',             price:55  },
+    { name:'Fair',       hex:'#EDD5B8', productLink:'', productName:'Flawless Filter Complexion',    brand:'Charlotte Tilbury',price:49  },
+    { name:'Light',      hex:'#D9B99B', productLink:'', productName:'Luminous Silk Foundation',      brand:'Armani Beauty',    price:68  },
+    { name:'Medium',     hex:'#C08040', productLink:'', productName:'Pro Filt\'r Soft Matte',        brand:'Fenty Beauty',     price:40  },
+    { name:'Tan',        hex:'#A0663C', productLink:'', productName:'Studio Fix Fluid SPF 15',       brand:'MAC',              price:35  },
+    { name:'Deep',       hex:'#6B3320', productLink:'', productName:'Teint Idole Ultra Wear',        brand:'Lancôme',          price:52  },
+  ]},
+  mascara: { label: 'Mascara', shades: [
+    { name:'Jet Black',  hex:'#050505', productLink:'', productName:'Better Than Sex Mascara',       brand:'Too Faced',        price:29  },
+    { name:'Soft Black', hex:'#1A1A1A', productLink:'', productName:'Diorshow Iconic Overcurl',      brand:'Dior',             price:32  },
+    { name:'Deep Brown', hex:'#2C1A0E', productLink:'', productName:'Pillow Talk Push Up Lashes',    brand:'Charlotte Tilbury',price:32  },
+    { name:'Navy',       hex:'#0A0F2E', productLink:'', productName:'Sky High Mascara',              brand:'Maybelline',       price:12  },
+    { name:'Burgundy',   hex:'#3A0010', productLink:'', productName:'Monsieur Big Mascara',          brand:'Lancôme',          price:30  },
+  ]},
+}
+
+type MakeupType = 'lipstick' | 'eyeshadow' | 'eyeliner' | 'blush' | 'contour' | 'highlighter' | 'foundation' | 'mascara'
+type ShadeEntry = { hex: string; name: string; opacity: number; productLink: string; imageLink?: string; productName: string; brand: string; price: number } | null
 type SelectedMakeup = Record<string, ShadeEntry>
 
 const DEFAULT_OPACITY: Record<string,number> = {
@@ -469,8 +726,57 @@ export default function TryOnPage() {
   const [isProcessing,  setIsProcessing]  = useState(false)
   const [faceDetected,  setFaceDetected]  = useState(false)
   const [activePanel,   setActivePanel]   = useState<'shades'|'presets'>('shades')
+  const [shopOpen,      setShopOpen]      = useState(true)
+  const [shades,        setShades]        = useState<Record<string, ShadeCategory>>(FALLBACK_SHADES)
 
   useEffect(() => { makeupRef.current = selectedMakeup }, [selectedMakeup])
+
+  // ── Live shades from makeup-api.herokuapp.com ─────────────────────────────
+  useEffect(() => {
+    const API = 'http://makeup-api.herokuapp.com/api/v1/products.json'
+    const TYPE_MAP: Partial<Record<MakeupType, string>> = {
+      lipstick: 'lipstick', eyeshadow: 'eyeshadow', eyeliner: 'eyeliner',
+      blush: 'blush', contour: 'bronzer', foundation: 'foundation', mascara: 'mascara',
+      // highlighter has no dedicated type — keep curated fallback shades
+    }
+    const LABELS: Record<MakeupType, string> = {
+      lipstick:'Lipstick', eyeshadow:'Eyeshadow', eyeliner:'Eyeliner', blush:'Blush',
+      contour:'Contour', highlighter:'Highlighter', foundation:'Foundation', mascara:'Mascara',
+    }
+    ;(Object.keys(TYPE_MAP) as MakeupType[]).forEach(cat => {
+      const pType = TYPE_MAP[cat]
+      if (!pType) return
+      fetch(`${API}?product_type=${pType}`)
+        .then(r => r.json())
+        .then((products: any[]) => {
+          const seen = new Set<string>()
+          const fetched: ShadeData[] = []
+          for (const p of products) {
+            if (!p.product_colors?.length) continue
+            for (const c of p.product_colors) {
+              const raw = (c.hex_value || '').trim()
+              const hex = (raw.startsWith('#') ? raw : '#' + raw).toUpperCase()
+              if (!/^#[0-9A-Fa-f]{6}$/.test(hex) || seen.has(hex)) continue
+              seen.add(hex)
+              fetched.push({
+                name:        c.colour_name || p.name,
+                hex,
+                productName: p.name,
+                brand:       (p.brand || '').replace(/(^|\s)\S/g, (l: string) => l.toUpperCase()),
+                price:       parseFloat(p.price) || 0,
+                productLink: p.product_link || '',
+                imageLink:   p.image_link   || '',
+              })
+              if (fetched.length >= 20) break
+            }
+            if (fetched.length >= 20) break
+          }
+          if (fetched.length > 0)
+            setShades(prev => ({ ...prev, [cat]: { label: LABELS[cat], shades: fetched } }))
+        })
+        .catch(() => {}) // keep fallback on network error
+    })
+  }, [])
 
   // ── Camera ────────────────────────────────────────────────────────────────
   const startCamera = useCallback(async () => {
@@ -560,60 +866,111 @@ export default function TryOnPage() {
     return () => { alive = false; cancelAnimationFrame(animRef.current) }
   }, [cameraActive, mode])
 
-  // ── Photo capture / apply ─────────────────────────────────────────────────
+  // ── Photo capture ─────────────────────────────────────────────────────────
   const capturePhoto = useCallback(() => {
     if (!videoRef.current) return
     const tmp = document.createElement('canvas')
     tmp.width  = videoRef.current.videoWidth  || 640
     tmp.height = videoRef.current.videoHeight || 480
     const ctx = tmp.getContext('2d')!
-    ctx.translate(tmp.width, 0); ctx.scale(-1,1)
+    // Mirror the photo to match the selfie view
+    ctx.translate(tmp.width, 0); ctx.scale(-1, 1)
     ctx.drawImage(videoRef.current, 0, 0)
-    ctx.setTransform(1,0,0,1,0,0)
-    setCapturedPhoto(tmp.toDataURL('image/jpeg', 0.92))
+    ctx.setTransform(1, 0, 0, 1, 0, 0)
+    setCapturedPhoto(tmp.toDataURL('image/jpeg', 0.95))
     setPhotoResult(null)
     setMode('photo')
   }, [])
 
+  // ── Apply makeup to photo via MediaPipe (no backend needed) ──────────────
   const applyToPhoto = useCallback(async () => {
     if (!capturedPhoto) return
     const hasAny = Object.values(selectedMakeup).some(Boolean)
     if (!hasAny) return
     setIsProcessing(true)
-    const config: any = {}
-    for (const [k,v] of Object.entries(selectedMakeup)) {
-      if (v) config[k] = { color: v.hex, opacity: v.opacity }
-    }
+
     try {
-      const { data } = await tryonAPI.applyMakeup(capturedPhoto, config)
-      if (data.success) setPhotoResult(data.image)
-      else toast.error('No face detected. Try better lighting.')
-    } catch { toast.error('Processing failed.') }
-    finally { setIsProcessing(false) }
+      // Load image element
+      const img = new Image()
+      img.src = capturedPhoto
+      await new Promise<void>((res, rej) => {
+        img.onload = () => res()
+        img.onerror = () => rej(new Error('Image load failed'))
+      })
+
+      // Create result canvas with full resolution
+      const canvas = document.createElement('canvas')
+      canvas.width  = img.naturalWidth
+      canvas.height = img.naturalHeight
+      const ctx = canvas.getContext('2d')!
+      ctx.drawImage(img, 0, 0)
+
+      const oc = document.createElement('canvas')
+      oc.width  = canvas.width
+      oc.height = canvas.height
+      const octx = oc.getContext('2d')!
+
+      // Load MediaPipe if not already loaded
+      if (!faceMeshRef.current) {
+        setMpLoading(true)
+        faceMeshRef.current = await initFaceMesh()
+        setMpLoading(false)
+      }
+
+      const fm = faceMeshRef.current
+      const currentMakeup = makeupRef.current
+
+      await new Promise<void>((resolve) => {
+        let done = false
+        fm.onResults((results: any) => {
+          if (done) return
+          done = true
+          const lms = results.multiFaceLandmarks?.[0]
+          if (lms) {
+            renderMakeup(ctx, octx, lms, canvas.width, canvas.height, currentMakeup)
+            setPhotoResult(canvas.toDataURL('image/jpeg', 0.95))
+          } else {
+            toast.error('No face detected. Try better lighting or a clearer photo.')
+          }
+          resolve()
+        })
+        fm.send({ image: img }).catch(() => resolve())
+      })
+    } catch {
+      toast.error('Processing failed.')
+    } finally {
+      setIsProcessing(false)
+    }
   }, [capturedPhoto, selectedMakeup])
 
   const downloadResult = useCallback(() => {
     const src = photoResult || (mode === 'live' && canvasRef.current
-      ? canvasRef.current.toDataURL('image/jpeg', 0.92) : capturedPhoto)
+      ? canvasRef.current.toDataURL('image/jpeg', 0.95) : capturedPhoto)
     if (!src) return
     const a = document.createElement('a')
     a.href = src; a.download = 'glamour-ai-look.jpg'; a.click()
     toast.success('Saved!')
   }, [photoResult, capturedPhoto, mode])
 
-  const toggleMakeup = (type: MakeupType, shade: { name: string; hex: string }) => {
+  const toggleMakeup = (type: MakeupType, shade: ShadeData) => {
     setSelectedMakeup(prev => ({
       ...prev,
       [type]: prev[type]?.hex === shade.hex
         ? null
-        : { ...shade, opacity: DEFAULT_OPACITY[type] },
+        : { ...shade, opacity: DEFAULT_OPACITY[type] ?? 0.5 },
     }))
   }
 
   const applyPreset = (preset: typeof PRESETS[0]) => {
     const next: SelectedMakeup = {}
     for (const [type, shade] of Object.entries(preset.makeup)) {
-      if (shade) next[type] = { ...shade, opacity: DEFAULT_OPACITY[type] }
+      if (!shade) continue
+      const full = shades[type]?.shades.find(s => s.hex === shade.hex)
+      if (full) {
+        next[type] = { ...full, opacity: DEFAULT_OPACITY[type] ?? 0.5 }
+      } else {
+        next[type] = { ...shade, opacity: DEFAULT_OPACITY[type] ?? 0.5, productLink: '', productName: shade.name, brand: '', price: 0 }
+      }
     }
     setSelectedMakeup(next)
     toast.success(`Applied "${preset.name}"`)
@@ -624,9 +981,9 @@ export default function TryOnPage() {
     toast('Look cleared', { icon: '✕' })
   }
 
-  const displaySrc    = mode === 'photo' ? (photoResult || capturedPhoto) : null
-  const hasAnyMakeup  = Object.values(selectedMakeup).some(Boolean)
-  const activeCount   = Object.values(selectedMakeup).filter(Boolean).length
+  const displaySrc   = mode === 'photo' ? (photoResult || capturedPhoto) : null
+  const hasAnyMakeup = Object.values(selectedMakeup).some(Boolean)
+  const activeCount  = Object.values(selectedMakeup).filter(Boolean).length
 
   return (
     <div className="pt-[88px] min-h-screen bg-noir">
@@ -644,7 +1001,7 @@ export default function TryOnPage() {
             Find Your <span className="italic text-champagne">Perfect Look</span>
           </h1>
           <p className="font-serif text-ivory/50 text-lg">
-            Real-time face detection · 7 makeup categories · 40+ shades
+            Real-time face detection · 8 categories · live shades from real brands
           </p>
         </div>
 
@@ -655,7 +1012,7 @@ export default function TryOnPage() {
             <div className="relative bg-charcoal aspect-[4/3] overflow-hidden border border-champagne/10">
               <video ref={videoRef} autoPlay playsInline muted className="hidden" />
 
-              {/* Live canvas (CSS-mirrored for selfie feel) */}
+              {/* Live canvas — CSS-mirrored for selfie view */}
               {cameraActive && mode === 'live' && (
                 <canvas ref={canvasRef} className="w-full h-full object-cover" style={{ transform:'scaleX(-1)' }} />
               )}
@@ -665,7 +1022,7 @@ export default function TryOnPage() {
                 <img src={displaySrc} alt="Try-on result" className="w-full h-full object-cover" />
               )}
 
-              {/* Idle state */}
+              {/* Idle */}
               {!cameraActive && !capturedPhoto && (
                 <div className="absolute inset-0 flex flex-col items-center justify-center">
                   <div className="w-24 h-24 border border-champagne/30 flex items-center justify-center mb-6">
@@ -679,7 +1036,7 @@ export default function TryOnPage() {
                 </div>
               )}
 
-              {/* Error */}
+              {/* Camera error */}
               {cameraError && (
                 <div className="absolute inset-0 flex flex-col items-center justify-center bg-noir/90 p-8">
                   <CameraOff size={36} className="text-red-400 mb-4" />
@@ -689,19 +1046,13 @@ export default function TryOnPage() {
               )}
 
               {/* AI loading */}
-              {mpLoading && (
+              {(mpLoading || isProcessing) && (
                 <div className="absolute inset-0 flex flex-col items-center justify-center bg-noir/70 backdrop-blur-sm">
                   <Loader2 size={32} className="text-champagne animate-spin mb-4" />
-                  <p className="font-sans text-xs tracking-widest uppercase text-champagne">Loading AI…</p>
-                  <p className="font-sans text-[10px] text-ivory/40 mt-1">First load ~6 MB</p>
-                </div>
-              )}
-
-              {/* Processing badge */}
-              {isProcessing && (
-                <div className="absolute top-4 left-4 flex items-center gap-2 bg-noir/70 backdrop-blur-sm px-3 py-2 border border-champagne/20">
-                  <div className="w-1.5 h-1.5 rounded-full bg-champagne animate-pulse" />
-                  <span className="font-sans text-[10px] tracking-widest uppercase text-champagne">Processing</span>
+                  <p className="font-sans text-xs tracking-widest uppercase text-champagne">
+                    {isProcessing ? 'Applying Makeup…' : 'Loading AI…'}
+                  </p>
+                  {!isProcessing && <p className="font-sans text-[10px] text-ivory/40 mt-1">First load ~6 MB</p>}
                 </div>
               )}
 
@@ -725,7 +1076,7 @@ export default function TryOnPage() {
                 </>
               )}
 
-              {/* Active makeup badges */}
+              {/* Active product badges */}
               {hasAnyMakeup && (
                 <div className="absolute bottom-4 left-4 right-4 flex flex-wrap gap-2 justify-end pointer-events-none">
                   {Object.entries(selectedMakeup).filter(([,v]) => v).map(([type,val]) => val && (
@@ -741,7 +1092,7 @@ export default function TryOnPage() {
               )}
             </div>
 
-            {/* Controls bar */}
+            {/* Controls */}
             <div className="flex gap-3 mt-4">
               {!cameraActive ? (
                 <button onClick={startCamera} className="flex-1 btn-gold flex items-center justify-center gap-2">
@@ -783,7 +1134,6 @@ export default function TryOnPage() {
           {/* ── Selector panel ────────────────────────────────────────────── */}
           <div className="lg:col-span-1 bg-charcoal/50 border border-champagne/10 p-6">
 
-            {/* Panel header */}
             <div className="flex items-center justify-between mb-5">
               <h3 className="font-display text-xl text-ivory">Build Your Look</h3>
               {hasAnyMakeup && (
@@ -807,7 +1157,6 @@ export default function TryOnPage() {
             </div>
 
             <AnimatePresence mode="wait">
-              {/* ── Presets panel ── */}
               {activePanel === 'presets' && (
                 <motion.div key="presets" initial={{ opacity:0, y:8 }} animate={{ opacity:1, y:0 }} exit={{ opacity:0, y:-8 }}>
                   <div className="space-y-3">
@@ -831,12 +1180,11 @@ export default function TryOnPage() {
                 </motion.div>
               )}
 
-              {/* ── Shades panel ── */}
               {activePanel === 'shades' && (
                 <motion.div key="shades" initial={{ opacity:0, y:8 }} animate={{ opacity:1, y:0 }} exit={{ opacity:0, y:-8 }}>
-                  {/* Category tabs — 4-col grid, wraps to 2 rows */}
+                  {/* Category tabs */}
                   <div className="grid grid-cols-4 gap-1.5 mb-6">
-                    {(Object.keys(SHADES) as MakeupType[]).map(type => (
+                    {(Object.keys(shades) as MakeupType[]).map(type => (
                       <button key={type} onClick={() => setActiveTab(type)}
                         className={`py-2 font-sans text-[9px] tracking-wider uppercase transition-all leading-tight text-center ${
                           activeTab === type
@@ -846,28 +1194,25 @@ export default function TryOnPage() {
                         {selectedMakeup[type] && (
                           <span className="block w-1 h-1 rounded-full bg-current mx-auto mb-0.5" />
                         )}
-                        {SHADES[type].label}
+                        {shades[type]?.label ?? type}
                       </button>
                     ))}
                   </div>
 
                   <AnimatePresence mode="wait">
                     <motion.div key={activeTab} initial={{ opacity:0, y:6 }} animate={{ opacity:1, y:0 }} exit={{ opacity:0 }}>
-
                       <div className="grid grid-cols-5 gap-2.5 mb-4">
-                        {/* Clear swatch */}
                         <button onClick={() => setSelectedMakeup(p => ({ ...p, [activeTab]: null }))}
                           className={`w-8 h-8 border-2 flex items-center justify-center transition-all ${
                             !selectedMakeup[activeTab] ? 'border-champagne text-champagne' : 'border-ivory/20 text-ivory/30 hover:border-ivory/50'
                           }`}>
                           <X size={11} />
                         </button>
-
-                        {SHADES[activeTab].shades.map(shade => {
+                        {(shades[activeTab]?.shades ?? []).map(shade => {
                           const sel = selectedMakeup[activeTab]?.hex === shade.hex
                           return (
                             <button key={shade.hex} onClick={() => toggleMakeup(activeTab, shade)}
-                              title={shade.name}
+                              title={`${shade.name} — ${shade.productName}`}
                               className={`w-8 h-8 rounded-full transition-all hover:scale-110 ${
                                 sel ? 'ring-2 ring-offset-2 ring-champagne ring-offset-charcoal scale-110' : 'shadow-md'
                               }`}
@@ -877,15 +1222,34 @@ export default function TryOnPage() {
                       </div>
 
                       {selectedMakeup[activeTab] && (
-                        <div className="bg-noir/50 px-4 py-3 flex items-center gap-3 mb-3">
-                          <span className="w-5 h-5 rounded-full flex-shrink-0"
-                            style={{ background: selectedMakeup[activeTab]!.hex }} />
-                          <div>
-                            <p className="font-sans text-xs text-ivory">{selectedMakeup[activeTab]!.name}</p>
-                            <p className="font-sans text-[10px] text-ivory/40 uppercase tracking-widest">
-                              {SHADES[activeTab].label}
-                            </p>
+                        <div className="bg-noir/50 border border-champagne/10 p-3 mb-3">
+                          <div className="flex items-center gap-3 mb-2.5">
+                            <span className="w-5 h-5 rounded-full flex-shrink-0"
+                              style={{ background: selectedMakeup[activeTab]!.hex }} />
+                            <div className="flex-1 min-w-0">
+                              <p className="font-sans text-xs text-ivory truncate">{selectedMakeup[activeTab]!.name}</p>
+                              <p className="font-sans text-[10px] text-ivory/40 uppercase tracking-widest">
+                                {shades[activeTab]?.label ?? activeTab}
+                              </p>
+                            </div>
                           </div>
+                          {selectedMakeup[activeTab]!.productLink ? (
+                            <a href={selectedMakeup[activeTab]!.productLink} target="_blank" rel="noopener noreferrer"
+                              className="flex items-center justify-between gap-2 bg-champagne/8 border border-champagne/20 px-3 py-2 hover:bg-champagne/15 hover:border-champagne/40 transition-all group">
+                              <div className="min-w-0 flex-1">
+                                <p className="font-sans text-[10px] text-champagne leading-tight truncate">{selectedMakeup[activeTab]!.productName}</p>
+                                <p className="font-sans text-[9px] text-ivory/40 mt-0.5">{selectedMakeup[activeTab]!.brand}{selectedMakeup[activeTab]!.price ? ` · $${selectedMakeup[activeTab]!.price.toFixed(2)}` : ''}</p>
+                              </div>
+                              <ShoppingBag size={12} className="text-champagne/60 group-hover:text-champagne transition-colors flex-shrink-0" />
+                            </a>
+                          ) : selectedMakeup[activeTab]!.productName ? (
+                            <div className="flex items-center justify-between gap-2 bg-champagne/5 border border-champagne/10 px-3 py-2">
+                              <div className="min-w-0 flex-1">
+                                <p className="font-sans text-[10px] text-champagne/70 leading-tight truncate">{selectedMakeup[activeTab]!.productName}</p>
+                                <p className="font-sans text-[9px] text-ivory/30 mt-0.5">{selectedMakeup[activeTab]!.brand}</p>
+                              </div>
+                            </div>
+                          ) : null}
                         </div>
                       )}
 
@@ -912,14 +1276,86 @@ export default function TryOnPage() {
               )}
             </AnimatePresence>
 
-            {/* How it works */}
-            <div className="mt-8 border-t border-ivory/10 pt-6">
+            {/* ── Shop This Look ── */}
+            {hasAnyMakeup && (
+              <div className="mt-5 border-t border-ivory/10 pt-5">
+                <button
+                  onClick={() => setShopOpen(v => !v)}
+                  className="w-full flex items-center justify-between mb-3 group"
+                >
+                  <span className="font-sans text-[10px] tracking-widest uppercase text-champagne flex items-center gap-1.5">
+                    <ShoppingBag size={11} />
+                    Shop This Look ({activeCount})
+                  </span>
+                  {shopOpen
+                    ? <ChevronUp size={12} className="text-champagne/60" />
+                    : <ChevronDown size={12} className="text-champagne/60" />}
+                </button>
+
+                <AnimatePresence>
+                  {shopOpen && (
+                    <motion.div
+                      initial={{ height: 0, opacity: 0 }}
+                      animate={{ height: 'auto', opacity: 1 }}
+                      exit={{ height: 0, opacity: 0 }}
+                      transition={{ duration: 0.2 }}
+                      className="overflow-hidden"
+                    >
+                      <div className="space-y-1">
+                        {Object.entries(selectedMakeup)
+                          .filter(([, v]) => v)
+                          .map(([type, val]) => val && (
+                            val.productLink ? (
+                              <a
+                                key={type}
+                                href={val.productLink}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="flex items-center gap-2.5 px-2 py-2 hover:bg-champagne/8 transition-colors group border border-transparent hover:border-champagne/15"
+                              >
+                                <span className="w-3.5 h-3.5 rounded-full flex-shrink-0 border border-ivory/20"
+                                  style={{ background: val.hex }} />
+                                <div className="flex-1 min-w-0">
+                                  <p className="font-sans text-[10px] text-ivory/70 group-hover:text-champagne transition-colors leading-tight truncate">
+                                    {val.productName}
+                                  </p>
+                                  <p className="font-sans text-[9px] text-ivory/35">{val.brand}</p>
+                                </div>
+                                {val.price > 0 && (
+                                  <span className="font-sans text-[10px] text-champagne font-medium flex-shrink-0">
+                                    ${val.price.toFixed(2)}
+                                  </span>
+                                )}
+                              </a>
+                            ) : (
+                              <div key={type}
+                                className="flex items-center gap-2.5 px-2 py-2 border border-transparent opacity-60">
+                                <span className="w-3.5 h-3.5 rounded-full flex-shrink-0 border border-ivory/20"
+                                  style={{ background: val.hex }} />
+                                <div className="flex-1 min-w-0">
+                                  <p className="font-sans text-[10px] text-ivory/50 leading-tight truncate">{val.productName}</p>
+                                  <p className="font-sans text-[9px] text-ivory/30">{val.brand}</p>
+                                </div>
+                              </div>
+                            )
+                          ))}
+                      </div>
+                      <p className="font-sans text-[9px] text-ivory/30 mt-2 text-center">
+                        Click a product to shop on the brand's site
+                      </p>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </div>
+            )}
+
+            <div className="mt-6 border-t border-ivory/10 pt-5">
               <p className="font-sans text-[10px] tracking-widest uppercase text-champagne mb-3">How It Works</p>
               <ol className="space-y-2">
                 {[
                   '1. Enable your camera',
-                  '2. Pick a preset or build your own',
-                  '3. Makeup renders instantly on your face',
+                  '2. Pick a preset or build your own look',
+                  '3. Makeup renders in real-time on your face',
                   '4. Capture → Apply Look → Save',
                 ].map(s => <li key={s} className="font-sans text-xs text-ivory/50">{s}</li>)}
               </ol>

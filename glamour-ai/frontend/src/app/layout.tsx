@@ -8,6 +8,7 @@ import { Navbar } from '@/components/layout/Navbar'
 import { Footer } from '@/components/layout/Footer'
 import { CartDrawer } from '@/components/layout/CartDrawer'
 import { ChatWidget } from '@/components/chatbot/ChatWidget'
+import { AIToolsWidget } from '@/components/ai/AIToolsWidget'
 import { Toaster } from 'react-hot-toast'
 
 const playfair = Playfair_Display({
@@ -55,6 +56,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           <main className="min-h-screen">{children}</main>
           <Footer />
           <CartDrawer />
+          <AIToolsWidget />
           <ChatWidget />
           <Toaster
             position="bottom-right"

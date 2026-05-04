@@ -1,0 +1,21 @@
+# macOS
+.DS_Store
+__MACOSX/
+
+# VSCode
+.vscode/
+
+# Claude / AI tools
+.claude/
+
+# Node / Next.js
+node_modules/
+*.tsbuildinfo
+
+# Python
+venv/
+__pycache__/
+*.pyc
+
+# Env files
+.env

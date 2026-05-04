@@ -3,17 +3,16 @@
 
 import Link from 'next/link'
 import { useState, useEffect } from 'react'
-import { ShoppingBag, Search, User, Heart, Sparkles, Menu, X } from 'lucide-react'
+import { ShoppingBag, Search, User, Heart, Menu, X } from 'lucide-react'
 import { useAuthStore, useCartStore, useUIStore, useWishlistStore } from '@/lib/store'
 import { motion, AnimatePresence } from 'framer-motion'
 import { SearchOverlay } from './SearchOverlay'
 
 const NAV_LINKS = [
-  { href: '/products?category=makeup', label: 'Makeup' },
-  { href: '/products?category=skincare', label: 'Skincare' },
-  { href: '/products?category=fragrance', label: 'Fragrance' },
-  { href: '/products?category=tools', label: 'Tools' },
-  { href: '/tryon', label: 'Try On', highlight: true },
+  { href: '/products?category=makeup',     label: 'Makeup' },
+  { href: '/products?category=skincare',   label: 'Skincare' },
+  { href: '/products?category=fragrance',  label: 'Fragrance' },
+  { href: '/products?category=tools',      label: 'Tools' },
 ]
 
 export function Navbar() {
@@ -71,13 +70,8 @@ export function Navbar() {
               <Link
                 key={link.href}
                 href={link.href}
-                className={`font-sans text-xs tracking-[0.12em] uppercase transition-colors duration-200 ${
-                  link.highlight
-                    ? 'text-champagne hover:text-champagne-dark font-medium'
-                    : 'text-charcoal hover:text-champagne'
-                }`}
+                className="font-sans text-xs tracking-[0.12em] uppercase transition-colors duration-200 text-charcoal hover:text-champagne"
               >
-                {link.highlight && <Sparkles size={12} className="inline mr-1" />}
                 {link.label}
               </Link>
             ))}
@@ -157,9 +151,7 @@ export function Navbar() {
                   key={link.href}
                   href={link.href}
                   onClick={() => setMobileMenuOpen(false)}
-                  className={`font-display text-lg ${
-                    link.highlight ? 'text-champagne' : 'text-charcoal'
-                  }`}
+                  className="font-display text-lg text-charcoal"
                 >
                   {link.label}
                 </Link>
