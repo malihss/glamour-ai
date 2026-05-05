@@ -32,12 +32,12 @@ export const adminApi = {
     const qs = params ? '?' + new URLSearchParams(params).toString() : ''
     return request(`/products${qs}`)
   },
-  getProduct: (id: number) => request(`/products/${id}`),
+  getProduct: (id: string) => request(`/products/${id}`),
   createProduct: (body: unknown) =>
     request('/products', { method: 'POST', body: JSON.stringify(body) }),
-  updateProduct: (id: number, body: unknown) =>
+  updateProduct: (id: string, body: unknown) =>
     request(`/products/${id}`, { method: 'PUT', body: JSON.stringify(body) }),
-  deleteProduct: (id: number) =>
+  deleteProduct: (id: string) =>
     request(`/products/${id}`, { method: 'DELETE' }),
 
   getOrders: (params?: Record<string, string>) => {

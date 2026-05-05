@@ -1,5 +1,4 @@
 'use client'
-// src/components/product/BrandStrip.tsx
 
 import { motion } from 'framer-motion'
 
@@ -14,7 +13,14 @@ export function BrandStrip() {
   const doubled = [...BRANDS, ...BRANDS]
 
   return (
-    <div className="bg-ivory border-y border-champagne/12 py-4 overflow-hidden">
+    <div
+      className="py-4 overflow-hidden"
+      style={{
+        background: '#FAF8F6',
+        borderTop: '1px solid rgba(198,169,163,0.14)',
+        borderBottom: '1px solid rgba(198,169,163,0.14)',
+      }}
+    >
       <motion.div
         animate={{ x: ['0%', '-50%'] }}
         transition={{ duration: 40, repeat: Infinity, ease: 'linear' }}
@@ -23,11 +29,13 @@ export function BrandStrip() {
         {doubled.map((brand, i) => (
           <span
             key={i}
-            className="font-display text-sm tracking-[0.12em] text-charcoal/50 hover:text-champagne
-                       transition-colors duration-300 cursor-default flex items-center gap-14"
+            className="font-display text-sm tracking-[0.12em] transition-colors duration-300 cursor-default flex items-center gap-14"
+            style={{ color: 'rgba(122,115,111,0.40)' }}
+            onMouseEnter={e => ((e.currentTarget as HTMLElement).style.color = '#C6A9A3')}
+            onMouseLeave={e => ((e.currentTarget as HTMLElement).style.color = 'rgba(122,115,111,0.40)')}
           >
             {brand}
-            <span className="text-champagne/25 text-[8px]">✦</span>
+            <span style={{ color: 'rgba(198,169,163,0.25)', fontSize: '8px' }}>✦</span>
           </span>
         ))}
       </motion.div>

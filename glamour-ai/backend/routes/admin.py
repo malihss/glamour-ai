@@ -244,6 +244,7 @@ def create_product():
         is_featured=bool(data.get('isFeatured', False)),
         brand_id=data.get('brandId'),
         category_id=data.get('categoryId'),
+        tags=data.get('tags') or [],
     )
     db.session.add(product)
     db.session.flush()
@@ -286,6 +287,7 @@ def update_product(product_id):
     if 'isFeatured' in data:    p.is_featured = bool(data['isFeatured'])
     if 'brandId' in data:       p.brand_id = data['brandId']
     if 'categoryId' in data:    p.category_id = data['categoryId']
+    if 'tags' in data:          p.tags = data['tags'] or []
 
     if 'imageUrl' in data and data['imageUrl']:
         existing = ProductImage.query.filter_by(product_id=p.id, is_primary=True).first()
@@ -476,3 +478,33 @@ def list_brands():
     if err: return err
     brands = Brand.query.order_by(Brand.name.asc()).all()
     return jsonify({'brands': [{'id': b.id, 'name': b.name, 'slug': b.slug} for b in brands]})
+
+
+@admin_bp.route('/brands', methods=['POST'])
+@jwt_required()
+def create_brand():
+    err = require_admin()
+    if err: return err
+
+    data = request.get_json() or {}
+    name = data.get('name', '').strip()
+    if not name:
+        return jsonify({'error': 'Brand name is required'}), 400
+
+    brand_slug = slugify(name)
+    # Ensure unique slug
+    base = brand_slug
+    i = 1
+    while Brand.query.filter_by(slug=brand_slug).first():
+        brand_slug = f'{base}-{i}'
+        i += 1
+
+    brand = Brand(
+        name=name,
+        slug=brand_slug,
+        description=data.get('description', f'{name} beauty brand'),
+        country=data.get('country', '').strip() or None,
+    )
+    db.session.add(brand)
+    db.session.commit()
+    return jsonify({'brand': {'id': brand.id, 'name': brand.name, 'slug': brand.slug}}), 201

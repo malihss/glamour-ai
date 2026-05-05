@@ -37,7 +37,7 @@ export default function AdminProductsPage() {
     return () => clearTimeout(t)
   }, [fetchProducts, search])
 
-  const handleDelete = async (id: number, name: string) => {
+  const handleDelete = async (id: string, name: string) => {
     if (!confirm(`Deactivate "${name}"?`)) return
     try { await adminApi.deleteProduct(id); toast.success('Deactivated'); fetchProducts() }
     catch (e: any) { toast.error(e.message) }
