@@ -80,9 +80,9 @@ function LoginForm() {
         <div className="absolute inset-0"
           style={{ background: 'radial-gradient(ellipse at 30% 60%, rgba(201,169,110,0.15), transparent 60%)' }} />
         <img
-          src="https://images.unsplash.com/photo-1487412947147-5cebf100ffc2?w=900"
+          src="https://i.pinimg.com/736x/de/57/fe/de57fe307198178a503f11369646161a.jpg"
           alt="Beauty"
-          className="w-full h-full object-cover opacity-40"
+          className="w-full h-full object-cover opacity-60"
         />
         <div className="absolute inset-0 flex flex-col justify-end p-16">
           <h1 className="font-display text-5xl text-ivory mb-4">

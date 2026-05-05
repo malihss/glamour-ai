@@ -6,18 +6,18 @@ import { ArrowRight, Sparkles, Star } from 'lucide-react'
 
 const HERO_PRODUCTS = [
   {
-    image: 'https://images.unsplash.com/photo-1599733589046-833baccbfc2e?w=500&q=88',
-    brand: 'Charlotte Tilbury',
-    name: 'Matte Revolution',
-    price: '$34',
+    image: 'https://i.pinimg.com/736x/c8/76/b7/c876b7eccbf7c3ee8f0e11c8374e1543.jpg',
+    brand: 'Pat McGrath Labs',
+    name: 'MatteTrance Lipstick',
+    price: '$45',
     badge: 'Bestseller',
   },
   {
-    image: 'https://images.unsplash.com/photo-1585386959984-a4155224a1ad?w=500&q=88',
-    brand: 'Dior Beauty',
-    name: 'Miss Dior EDP',
-    price: '$135',
-    badge: 'Nouveau',
+    image: 'https://i.pinimg.com/1200x/fb/72/9e/fb729e954b1c0cfa59e2a0faa3507df9.jpg',
+    brand: 'Chanel',
+    name: 'N°5 Eau de Parfum',
+    price: '$165',
+    badge: 'Iconic',
   },
 ]
 
@@ -125,7 +125,7 @@ export function HeroSection() {
         >
           <div className="absolute inset-0">
             <img
-              src="https://images.unsplash.com/photo-1487412947147-5cebf100ffc2?w=1000&q=92"
+              src="https://i.pinimg.com/1200x/9c/5c/93/9c5c93587c6c13ec3dd0413b764a20e3.jpg"
               alt="Luxury beauty editorial"
               className="w-full h-full object-cover object-center"
             />

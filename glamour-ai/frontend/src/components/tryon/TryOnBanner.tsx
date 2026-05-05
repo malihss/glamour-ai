@@ -123,9 +123,9 @@ export function TryOnBanner() {
               <div className="absolute inset-8 rounded-full overflow-hidden"
                 style={{ border: '2px solid rgba(198,169,163,0.30)', boxShadow: '0 16px 56px rgba(62,58,57,0.10)' }}>
                 <img
-                  src="https://images.unsplash.com/photo-1487412947147-5cebf100ffc2?w=600&q=85"
+                  src="https://i.pinimg.com/736x/de/57/fe/de57fe307198178a503f11369646161a.jpg"
                   alt="Virtual try-on demo"
-                  className="w-full h-full object-cover object-top"
+                  className="w-full h-full object-cover" style={{ objectPosition: 'center 20%' }}
                 />
                 <div className="absolute inset-0 opacity-[0.05]"
                   style={{ background: 'radial-gradient(ellipse at 50% 40%, #C6A9A3 0%, transparent 60%)' }} />
