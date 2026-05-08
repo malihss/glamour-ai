@@ -1,0 +1,27 @@
+# macOS
+.DS_Store
+__MACOSX/
+
+# Editor
+.vscode/
+.idea/
+
+# Claude
+.claude/
+
+# Python caches (all subdirs)
+**/__pycache__/
+**/*.py[cod]
+**/*.pyo
+**/*.pyd
+
+# Node
+**/node_modules/
+
+# Next.js build
+**/.next/
+
+# Virtual envs
+**/venv/
+**/venv_windows_backup/
+**/env/
