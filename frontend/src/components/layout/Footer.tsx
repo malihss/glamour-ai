@@ -1,18 +1,40 @@
-// src/components/layout/Footer.tsx
+'use client'
 
 import Link from 'next/link'
 import { Instagram, Youtube, Twitter } from 'lucide-react'
+import { useUIStore } from '@/lib/store'
+
+const SHOP_LINKS = [
+  { label: 'Makeup',         href: '/products?category=makeup' },
+  { label: 'Skincare',       href: '/products?category=skincare' },
+  { label: 'Fragrance',      href: '/fragrance' },
+  { label: 'Tools & Brushes',href: '/products?category=tools' },
+  { label: 'New Arrivals',   href: '/products?sort=created_at&order=desc' },
+  { label: 'Best Sellers',   href: '/products?sort=rating&order=desc' },
+]
+
+const HELP_LINKS = [
+  { label: 'Shipping & Returns', href: '/shipping' },
+  { label: 'Order Status',       href: '/account' },
+  { label: 'Privacy Policy',     href: '/privacy' },
+  { label: 'Terms of Service',   href: '/terms' },
+  { label: 'Contact Us',         href: '/contact' },
+]
 
 export function Footer() {
+  const { setChatOpen } = useUIStore()
+
   return (
     <footer className="bg-noir text-ivory/80">
       <div className="max-w-screen-xl mx-auto px-4 md:px-8 py-16">
         <div className="grid grid-cols-1 md:grid-cols-4 gap-12 mb-16">
           {/* Brand */}
           <div className="md:col-span-1">
-            <h2 className="font-display text-2xl text-ivory tracking-[0.15em] mb-4">
-              GLAMOUR<span className="text-champagne"> AI</span>
-            </h2>
+            <Link href="/">
+              <h2 className="font-display text-2xl text-ivory tracking-[0.15em] mb-4">
+                GLAMOUR<span className="text-champagne"> AI</span>
+              </h2>
+            </Link>
             <p className="font-serif text-ivory/60 text-sm leading-relaxed mb-6">
               Where luxury beauty meets artificial intelligence. Discover, try, and fall in love.
             </p>
@@ -29,26 +51,7 @@ export function Footer() {
           <div>
             <h3 className="font-sans text-[10px] tracking-[0.2em] uppercase text-champagne mb-6">Shop</h3>
             <ul className="space-y-3">
-              {['Makeup', 'Skincare', 'Fragrance', 'Tools & Brushes', 'New Arrivals', 'Best Sellers'].map((item) => (
-                <li key={item}>
-                  <Link href="/products" className="font-sans text-xs text-ivory/60 hover:text-champagne transition-colors">
-                    {item}
-                  </Link>
-                </li>
-              ))}
-            </ul>
-          </div>
-
-          {/* AI Features */}
-          <div>
-            <h3 className="font-sans text-[10px] tracking-[0.2em] uppercase text-champagne mb-6">Beauty Tech</h3>
-            <ul className="space-y-3">
-              {[
-                { label: 'Virtual Try-On', href: '/tryon' },
-                { label: 'AI Recommendations', href: '/products' },
-                { label: 'Beauty Chatbot', href: '#' },
-                { label: 'Skin Analysis', href: '#' },
-              ].map((item) => (
+              {SHOP_LINKS.map((item) => (
                 <li key={item.label}>
                   <Link href={item.href} className="font-sans text-xs text-ivory/60 hover:text-champagne transition-colors">
                     {item.label}
@@ -58,15 +61,48 @@ export function Footer() {
             </ul>
           </div>
 
+          {/* Beauty Tech */}
+          <div>
+            <h3 className="font-sans text-[10px] tracking-[0.2em] uppercase text-champagne mb-6">Beauty Tech</h3>
+            <ul className="space-y-3">
+              <li>
+                <Link href="/tryon" className="font-sans text-xs text-ivory/60 hover:text-champagne transition-colors">
+                  Virtual Try-On
+                </Link>
+              </li>
+              <li>
+                <button
+                  onClick={() => setChatOpen(true)}
+                  className="font-sans text-xs text-ivory/60 hover:text-champagne transition-colors text-left"
+                >
+                  AI Recommendations
+                </button>
+              </li>
+              <li>
+                <button
+                  onClick={() => setChatOpen(true)}
+                  className="font-sans text-xs text-ivory/60 hover:text-champagne transition-colors text-left"
+                >
+                  Beauty Chatbot
+                </button>
+              </li>
+              <li>
+                <Link href="/skincare" className="font-sans text-xs text-ivory/60 hover:text-champagne transition-colors">
+                  Skin Analysis
+                </Link>
+              </li>
+            </ul>
+          </div>
+
           {/* Help */}
           <div>
             <h3 className="font-sans text-[10px] tracking-[0.2em] uppercase text-champagne mb-6">Help</h3>
             <ul className="space-y-3">
-              {['Shipping & Returns', 'Order Status', 'Privacy Policy', 'Terms of Service', 'Contact Us'].map((item) => (
-                <li key={item}>
-                  <a href="#" className="font-sans text-xs text-ivory/60 hover:text-champagne transition-colors">
-                    {item}
-                  </a>
+              {HELP_LINKS.map((item) => (
+                <li key={item.label}>
+                  <Link href={item.href} className="font-sans text-xs text-ivory/60 hover:text-champagne transition-colors">
+                    {item.label}
+                  </Link>
                 </li>
               ))}
             </ul>

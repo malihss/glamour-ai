@@ -6,7 +6,7 @@ Protected by a separate admin JWT with role='admin' claim.
 from flask import Blueprint, request, jsonify
 from flask_jwt_extended import create_access_token, jwt_required, get_jwt
 from extensions import db
-from models import Product, Category, Brand, Order, OrderItem, User, ProductImage
+from models import Product, Category, Brand, Order, OrderItem, User, ProductImage, Review, ChatSession
 from sqlalchemy import func, desc, asc, or_
 from datetime import datetime, timedelta
 import os
@@ -19,12 +19,19 @@ admin_bp = Blueprint('admin', __name__)
 ORDER_STATUSES = ['pending', 'confirmed', 'processing', 'shipped', 'delivered', 'cancelled', 'refunded']
 
 
-# ── Auth helper ───────────────────────────────────────────────────────────────
+# ── Auth helpers ──────────────────────────────────────────────────────────────
 
 def require_admin():
     claims = get_jwt()
     if claims.get('role') != 'admin':
         return jsonify({'error': 'Admin access required'}), 403
+    return None
+
+
+def require_consultant():
+    claims = get_jwt()
+    if claims.get('role') not in ('admin', 'consultant'):
+        return jsonify({'error': 'Consultant access required'}), 403
     return None
 
 
@@ -508,3 +515,212 @@ def create_brand():
     db.session.add(brand)
     db.session.commit()
     return jsonify({'brand': {'id': brand.id, 'name': brand.name, 'slug': brand.slug}}), 201
+
+
+# ── Beauty Consultant ─────────────────────────────────────────────────────────
+
+@admin_bp.route('/consultant/login', methods=['POST'])
+def consultant_login_route():
+    data = request.get_json() or {}
+    password = data.get('password', '').strip()
+    consultant_pass = os.getenv('CONSULTANT_PASSWORD', 'beautyexpert2026')
+    if not password or password != consultant_pass:
+        return jsonify({'error': 'Invalid password'}), 401
+    token = create_access_token(
+        identity='consultant',
+        additional_claims={'role': 'consultant'},
+        expires_delta=timedelta(hours=12)
+    )
+    return jsonify({'access_token': token})
+
+
+@admin_bp.route('/consultant/clients', methods=['GET'])
+@jwt_required()
+def consultant_list_clients():
+    err = require_consultant()
+    if err: return err
+
+    page     = request.args.get('page', 1, type=int)
+    per_page = min(request.args.get('limit', 30, type=int), 100)
+    search   = request.args.get('search', '').strip()
+
+    q = User.query
+    if search:
+        term = f'%{search}%'
+        q = q.filter(or_(
+            User.email.ilike(term),
+            User.first_name.ilike(term),
+            User.last_name.ilike(term),
+        ))
+
+    pag = q.order_by(desc(User.created_at)).paginate(page=page, per_page=per_page, error_out=False)
+
+    def client_row(u):
+        order_count = Order.query.filter_by(user_id=u.id).count()
+        total_spent = db.session.query(func.sum(Order.total)).filter_by(user_id=u.id).scalar() or 0
+        review_count = Review.query.filter_by(user_id=u.id).count()
+        prefs = u.preferences or {}
+        has_notes = bool(prefs.get('consultant_notes'))
+        last_order = Order.query.filter_by(user_id=u.id).order_by(desc(Order.created_at)).first()
+        return {
+            'id': str(u.id),
+            'email': u.email,
+            'firstName': u.first_name,
+            'lastName': u.last_name,
+            'skinTone': u.skin_tone,
+            'skinType': u.skin_type,
+            'orderCount': order_count,
+            'totalSpent': float(total_spent),
+            'reviewCount': review_count,
+            'hasNotes': has_notes,
+            'lastOrderAt': last_order.created_at.isoformat() if last_order else None,
+            'createdAt': u.created_at.isoformat() if u.created_at else None,
+        }
+
+    return jsonify({
+        'clients': [client_row(u) for u in pag.items],
+        'pagination': {'page': page, 'perPage': per_page, 'total': pag.total, 'totalPages': pag.pages},
+    })
+
+
+@admin_bp.route('/consultant/clients/<user_id>', methods=['GET'])
+@jwt_required()
+def consultant_get_client(user_id):
+    err = require_consultant()
+    if err: return err
+
+    u = User.query.get(user_id)
+    if not u:
+        return jsonify({'error': 'User not found'}), 404
+
+    orders = (Order.query.filter_by(user_id=u.id)
+              .order_by(desc(Order.created_at)).limit(10).all())
+    reviews = Review.query.filter_by(user_id=u.id).order_by(desc(Review.created_at)).all()
+    chat_count = ChatSession.query.filter_by(user_id=u.id).count()
+    order_count = Order.query.filter_by(user_id=u.id).count()
+    total_spent = db.session.query(func.sum(Order.total)).filter_by(user_id=u.id).scalar() or 0
+
+    prefs = u.preferences or {}
+    consultant_notes = prefs.get('consultant_notes', [])
+    recommended_ids  = prefs.get('recommended_products', [])
+
+    recommended_products = []
+    if recommended_ids:
+        for pid in recommended_ids[-10:]:
+            p = Product.query.get(pid)
+            if p:
+                recommended_products.append({
+                    'id': str(p.id),
+                    'name': p.name,
+                    'slug': p.slug,
+                    'price': float(p.price),
+                    'primaryImage': p.primary_image(),
+                    'brand': p.brand.name if p.brand else None,
+                })
+
+    return jsonify({
+        'client': {
+            'id': str(u.id),
+            'email': u.email,
+            'firstName': u.first_name,
+            'lastName': u.last_name,
+            'skinTone': u.skin_tone,
+            'skinType': u.skin_type,
+            'preferences': prefs,
+            'createdAt': u.created_at.isoformat() if u.created_at else None,
+            'orderCount': order_count,
+            'totalSpent': float(total_spent),
+            'chatCount': chat_count,
+            'consultantNotes': consultant_notes,
+            'recommendedProducts': recommended_products,
+            'orders': [
+                {
+                    'id': str(o.id),
+                    'orderNumber': o.order_number,
+                    'status': o.status,
+                    'total': float(o.total),
+                    'itemCount': sum(i.quantity for i in o.items),
+                    'createdAt': o.created_at.isoformat() if o.created_at else None,
+                }
+                for o in orders
+            ],
+            'reviews': [
+                {
+                    'id': str(r.id),
+                    'productName': r.product.name if r.product else '',
+                    'rating': r.rating,
+                    'title': r.title,
+                    'body': r.body,
+                    'createdAt': r.created_at.isoformat() if r.created_at else None,
+                }
+                for r in reviews
+            ],
+        }
+    })
+
+
+@admin_bp.route('/consultant/clients/<user_id>/notes', methods=['POST'])
+@jwt_required()
+def consultant_add_note(user_id):
+    err = require_consultant()
+    if err: return err
+
+    u = User.query.get(user_id)
+    if not u:
+        return jsonify({'error': 'User not found'}), 404
+
+    data = request.get_json() or {}
+    note_text = data.get('note', '').strip()
+    if not note_text:
+        return jsonify({'error': 'Note text required'}), 400
+
+    prefs = dict(u.preferences or {})
+    notes = list(prefs.get('consultant_notes', []))
+    notes.append({
+        'text': note_text,
+        'createdAt': datetime.utcnow().isoformat(),
+    })
+    prefs['consultant_notes'] = notes[-50:]
+    u.preferences = prefs
+    db.session.commit()
+
+    return jsonify({'notes': prefs['consultant_notes']})
+
+
+@admin_bp.route('/consultant/clients/<user_id>/recommend', methods=['POST'])
+@jwt_required()
+def consultant_recommend(user_id):
+    err = require_consultant()
+    if err: return err
+
+    u = User.query.get(user_id)
+    if not u:
+        return jsonify({'error': 'User not found'}), 404
+
+    data = request.get_json() or {}
+    product_id = data.get('productId', '').strip()
+    if not product_id:
+        return jsonify({'error': 'productId required'}), 400
+
+    p = Product.query.get(product_id)
+    if not p:
+        return jsonify({'error': 'Product not found'}), 404
+
+    prefs = dict(u.preferences or {})
+    recs = list(prefs.get('recommended_products', []))
+    if product_id not in recs:
+        recs.append(product_id)
+    prefs['recommended_products'] = recs[-20:]
+    u.preferences = prefs
+    db.session.commit()
+
+    return jsonify({
+        'product': {
+            'id': str(p.id),
+            'name': p.name,
+            'slug': p.slug,
+            'price': float(p.price),
+            'primaryImage': p.primary_image(),
+            'brand': p.brand.name if p.brand else None,
+        }
+    })

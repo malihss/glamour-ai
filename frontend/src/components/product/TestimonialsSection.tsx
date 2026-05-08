@@ -1,34 +1,45 @@
 'use client'
 
+import { useEffect, useState } from 'react'
 import { motion } from 'framer-motion'
 import { Star, Quote } from 'lucide-react'
 
-const TESTIMONIALS = [
+const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api'
+
+const FALLBACKS = [
   {
     name: 'Sophia M.',
-    location: 'Paris, France',
     rating: 5,
-    text: 'The AI try-on feature completely changed how I shop for makeup. I tried on 20 lipstick shades in minutes and found my perfect match. The products arrived beautifully packaged — pure luxury.',
-    product: 'Charlotte Tilbury Matte Revolution',
-    avatar: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=120&q=85',
+    body: 'The AI try-on feature completely changed how I shop for makeup. I tried on 20 lipstick shades in minutes and found my perfect match. The products arrived beautifully packaged — pure luxury.',
+    productName: 'Charlotte Tilbury Matte Revolution',
   },
   {
     name: 'Isabelle R.',
-    location: 'London, UK',
     rating: 5,
-    text: 'I have been searching for the right fragrance for months. The chatbot asked me a few questions about my preferences and suggested Replica Jazz Club — it is absolutely perfect.',
-    product: 'Maison Margiela Replica',
-    avatar: 'https://images.unsplash.com/photo-1524504388940-b1c1722653e1?w=120&q=85',
+    body: 'I have been searching for the right fragrance for months. The chatbot asked me a few questions about my preferences and suggested Replica Jazz Club — it is absolutely perfect.',
+    productName: 'Maison Margiela Replica',
   },
   {
     name: 'Natalia V.',
-    location: 'New York, USA',
     rating: 5,
-    text: 'Glamour AI is the only beauty platform I trust for luxury skincare. The La Mer I ordered arrived in two days, sealed and authentic. The personalized recommendations have introduced me to brands I now love.',
-    product: 'La Mer Crème de la Mer',
-    avatar: 'https://images.unsplash.com/photo-1531746020798-e6953c6e8e04?w=120&q=85',
+    body: 'Glamour AI is the only beauty platform I trust for luxury skincare. The La Mer I ordered arrived in two days, sealed and authentic. The personalized recommendations have introduced me to brands I now love.',
+    productName: 'La Mer Crème de la Mer',
   },
 ]
+
+function InitialAvatar({ name }: { name: string }) {
+  const initial = name.trim()[0]?.toUpperCase() ?? '?'
+  return (
+    <div className="w-10 h-10 rounded-full flex-shrink-0 flex items-center justify-center
+                    font-display text-sm font-medium text-white"
+      style={{
+        background: 'linear-gradient(135deg,#C6A9A3,#A08070)',
+        border: '2px solid rgba(198,169,163,0.28)',
+      }}>
+      {initial}
+    </div>
+  )
+}
 
 function StarRow({ rating }: { rating: number }) {
   return (
@@ -42,12 +53,44 @@ function StarRow({ rating }: { rating: number }) {
 }
 
 export function TestimonialsSection() {
+  const [items, setItems] = useState(FALLBACKS)
+  const [avg, setAvg] = useState<number | null>(null)
+  const [total, setTotal] = useState<number | null>(null)
+
+  useEffect(() => {
+    fetch(`${API_URL}/products/reviews/recent?limit=3`)
+      .then(r => r.json())
+      .then(d => {
+        if (d.reviews?.length >= 1) {
+          setItems(d.reviews.map((r: any) => ({
+            name: r.name,
+            rating: r.rating,
+            body: r.body,
+            productName: r.productName,
+            productSlug: r.productSlug,
+          })))
+        }
+      })
+      .catch(() => {})
+
+    // Fetch overall stats
+    fetch(`${API_URL}/products/reviews/recent?limit=100`)
+      .then(r => r.json())
+      .then(d => {
+        if (d.reviews?.length > 0) {
+          const a = d.reviews.reduce((s: number, r: any) => s + r.rating, 0) / d.reviews.length
+          setAvg(Math.round(a * 10) / 10)
+          setTotal(d.reviews.length)
+        }
+      })
+      .catch(() => {})
+  }, [])
+
   return (
     <section
       className="section-padding relative overflow-hidden"
       style={{ background: 'linear-gradient(180deg, #FAF8F6 0%, #F1EDE9 100%)' }}
     >
-      {/* Decorative blob */}
       <div className="absolute top-0 right-0 w-80 h-80 rounded-full opacity-15 pointer-events-none"
         style={{ background: 'radial-gradient(circle, #EDE5E3 0%, transparent 70%)', filter: 'blur(60px)', transform: 'translate(30%, -30%)' }} />
 
@@ -66,9 +109,9 @@ export function TestimonialsSection() {
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          {TESTIMONIALS.map((t, i) => (
+          {items.map((t, i) => (
             <motion.div
-              key={t.name}
+              key={i}
               initial={{ opacity: 0, y: 24 }}
               whileInView={{ opacity: 1, y: 0 }}
               transition={{ delay: i * 0.12, duration: 0.55 }}
@@ -88,22 +131,24 @@ export function TestimonialsSection() {
               </div>
 
               <p className="font-body text-base leading-relaxed flex-1" style={{ color: '#7A736F' }}>
-                &ldquo;{t.text}&rdquo;
+                &ldquo;{t.body}&rdquo;
               </p>
 
               <div className="pt-5 flex items-center gap-4"
                 style={{ borderTop: '1px solid rgba(198,169,163,0.14)' }}>
-                <div className="w-10 h-10 rounded-full overflow-hidden flex-shrink-0"
-                  style={{ border: '2px solid rgba(198,169,163,0.28)' }}>
-                  <img src={t.avatar} alt={t.name} className="w-full h-full object-cover" loading="lazy" />
-                </div>
+                <InitialAvatar name={t.name} />
                 <div>
-                  <p className="font-sans text-xs tracking-[0.12em] uppercase" style={{ color: '#3E3A39' }}>{t.name}</p>
-                  <p className="font-sans text-[10px] mt-0.5" style={{ color: '#A89E99' }}>{t.location}</p>
+                  <p className="font-sans text-xs tracking-[0.12em] uppercase" style={{ color: '#3E3A39' }}>
+                    {t.name}
+                  </p>
                 </div>
                 <div className="ml-auto text-right">
-                  <p className="font-sans text-[9px] tracking-[0.1em] uppercase" style={{ color: '#C6A9A3' }}>Purchased</p>
-                  <p className="font-body text-[11px] mt-0.5" style={{ color: '#A89E99' }}>{t.product}</p>
+                  <p className="font-sans text-[9px] tracking-[0.1em] uppercase" style={{ color: '#C6A9A3' }}>
+                    Reviewed
+                  </p>
+                  <p className="font-body text-[11px] mt-0.5" style={{ color: '#A89E99' }}>
+                    {t.productName}
+                  </p>
                 </div>
               </div>
             </motion.div>
@@ -124,7 +169,9 @@ export function TestimonialsSection() {
             ))}
           </div>
           <span className="font-sans text-xs tracking-widest" style={{ color: '#A89E99' }}>
-            4.9 / 5 from 2,400+ verified reviews
+            {avg != null && total != null
+              ? `${avg.toFixed(1)} / 5 from ${total}+ verified review${total !== 1 ? 's' : ''}`
+              : '4.9 / 5 from 2,400+ verified reviews'}
           </span>
         </motion.div>
       </div>

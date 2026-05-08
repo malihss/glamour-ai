@@ -8,7 +8,7 @@ from flask_jwt_extended import (
     jwt_required, get_jwt_identity
 )
 from extensions import db
-from models import User
+from models import User, Product
 import re
 
 auth_bp = Blueprint('auth', __name__)
@@ -138,3 +138,34 @@ def change_password():
     db.session.commit()
 
     return jsonify({'message': 'Password updated successfully'})
+
+
+@auth_bp.route('/recommendations', methods=['GET'])
+@jwt_required()
+def get_recommendations():
+    user_id = get_jwt_identity()
+    user = User.query.get(user_id)
+    if not user:
+        return jsonify({'recommendations': []})
+
+    prefs = user.preferences or {}
+    product_ids = prefs.get('recommended_products', [])
+
+    products = []
+    for pid in product_ids[-20:]:
+        p = Product.query.get(pid)
+        if p and p.is_active:
+            products.append({
+                'id': str(p.id),
+                'name': p.name,
+                'slug': p.slug,
+                'price': float(p.price),
+                'compareAtPrice': float(p.compare_at_price) if p.compare_at_price else None,
+                'primaryImage': p.primary_image(),
+                'brand': p.brand.name if p.brand else None,
+                'category': p.category.name if p.category else None,
+            })
+
+    notes = prefs.get('consultant_notes', [])
+
+    return jsonify({'recommendations': products, 'notes': notes})

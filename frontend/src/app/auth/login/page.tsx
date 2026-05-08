@@ -17,7 +17,7 @@ function LoginForm() {
   const searchParams = useSearchParams()
   const { login } = useAuthStore()
 
-  const [tab, setTab] = useState<'user' | 'admin'>(
+  const [tab, setTab] = useState<'user' | 'admin' | 'consultant'>(
     searchParams?.get('admin') === '1' ? 'admin' : 'user'
   )
   const [showPass, setShowPass] = useState(false)
@@ -26,8 +26,9 @@ function LoginForm() {
 
   const [userForm, setUserForm] = useState({ email: '', password: '' })
   const [adminForm, setAdminForm] = useState({ username: '', password: '' })
+  const [consultantPassword, setConsultantPassword] = useState('')
 
-  const switchTab = (t: 'user' | 'admin') => {
+  const switchTab = (t: 'user' | 'admin' | 'consultant') => {
     setTab(t)
     setError('')
     setShowPass(false)
@@ -45,6 +46,29 @@ function LoginForm() {
       router.push('/')
     } catch (err: any) {
       setError(err.response?.data?.error || 'Invalid email or password')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const handleConsultantSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setError('')
+    if (!consultantPassword) { setError('Please enter your password'); return }
+    setLoading(true)
+    try {
+      const res = await fetch(`${API_URL}/admin/consultant/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ password: consultantPassword }),
+      })
+      const data = await res.json()
+      if (!res.ok) { setError(data.error || 'Invalid password'); return }
+      Cookies.set('consultant_token', data.access_token, { expires: 0.5, sameSite: 'lax' })
+      toast.success('Welcome, Beauty Expert!')
+      router.push('/consultant')
+    } catch {
+      setError('Cannot connect to server.')
     } finally {
       setLoading(false)
     }
@@ -123,6 +147,17 @@ function LoginForm() {
             >
               Admin
             </button>
+            <button
+              onClick={() => switchTab('consultant')}
+              className={`flex-1 pb-3 font-sans text-xs tracking-widest uppercase transition-colors ${
+                tab === 'consultant'
+                  ? 'border-b-2 -mb-px'
+                  : 'text-charcoal-soft hover:text-charcoal'
+              }`}
+              style={tab === 'consultant' ? { color: '#C6A9A3', borderColor: '#C6A9A3' } : {}}
+            >
+              Consultant
+            </button>
           </div>
 
           <AnimatePresence mode="wait">
@@ -192,6 +227,59 @@ function LoginForm() {
                     Email: demo@glamour.ai · Password: glamour123
                   </p>
                 </div>
+              </motion.div>
+
+            ) : tab === 'consultant' ? (
+              <motion.div key="consultant"
+                initial={{ opacity: 0, x: 8 }} animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0, x: -8 }} transition={{ duration: 0.15 }}>
+
+                <h2 className="font-display text-3xl text-noir mb-2">Beauty Expert</h2>
+                <p className="font-serif text-charcoal-soft mb-8">Sign in to your consultant console</p>
+
+                {error && (
+                  <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 font-sans text-xs mb-6">
+                    {error}
+                  </div>
+                )}
+
+                <form onSubmit={handleConsultantSubmit} className="space-y-6">
+                  <div>
+                    <label className="font-sans text-[10px] tracking-[0.2em] uppercase text-charcoal-soft block mb-2">
+                      Password
+                    </label>
+                    <div className="relative">
+                      <Lock size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-charcoal-soft/40" />
+                      <input
+                        type={showPass ? 'text' : 'password'}
+                        value={consultantPassword}
+                        onChange={e => { setConsultantPassword(e.target.value); setError('') }}
+                        placeholder="••••••••"
+                        className="input-luxury pl-9 pr-10"
+                        autoFocus
+                      />
+                      <button type="button" onClick={() => setShowPass(v => !v)}
+                        className="absolute right-3 top-1/2 -translate-y-1/2 text-charcoal-soft hover:text-charcoal">
+                        {showPass ? <EyeOff size={15} /> : <Eye size={15} />}
+                      </button>
+                    </div>
+                  </div>
+                  <button type="submit" disabled={loading}
+                    className="w-full font-sans text-[11px] tracking-widest uppercase py-3.5 text-white
+                               transition-colors disabled:opacity-60 flex items-center justify-center gap-2"
+                    style={{ background: 'linear-gradient(135deg,#C6A9A3,#A08070)' }}>
+                    {loading ? (
+                      <>
+                        <span className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                        Signing in...
+                      </>
+                    ) : 'Access Consultant Console'}
+                  </button>
+                </form>
+
+                <p className="font-sans text-xs text-center text-charcoal-soft mt-8">
+                  <Link href="/" className="hover:text-champagne transition-colors">← Back to store</Link>
+                </p>
               </motion.div>
 
             ) : (

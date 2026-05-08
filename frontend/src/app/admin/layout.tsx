@@ -6,14 +6,15 @@ import Link from 'next/link'
 import Cookies from 'js-cookie'
 import {
   LayoutDashboard, Package, ShoppingBag, Users,
-  LogOut, Menu, X, Sparkles, ExternalLink,
+  LogOut, Menu, X, Sparkles, ExternalLink, HeartHandshake,
 } from 'lucide-react'
 
 const NAV = [
-  { href: '/admin',          label: 'Dashboard', icon: LayoutDashboard, exact: true },
-  { href: '/admin/products', label: 'Products',  icon: Package },
-  { href: '/admin/orders',   label: 'Orders',    icon: ShoppingBag },
-  { href: '/admin/users',    label: 'Users',     icon: Users },
+  { href: '/admin',             label: 'Dashboard',     icon: LayoutDashboard,  exact: true },
+  { href: '/admin/products',    label: 'Products',      icon: Package },
+  { href: '/admin/orders',      label: 'Orders',        icon: ShoppingBag },
+  { href: '/admin/users',       label: 'Users',         icon: Users },
+  { href: '/admin/consultant',  label: 'Beauty Expert', icon: HeartHandshake },
 ]
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
@@ -108,7 +109,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
               <span className="text-gray-400 font-medium">Admin</span>
               <span className="text-gray-300">/</span>
               <span className="text-gray-800 font-semibold">
-                {NAV.find(n => isActive(n))?.label ?? 'Panel'}
+                {NAV.find(n => isActive(n))?.label ?? pathname.split('/').pop() ?? 'Panel'}
               </span>
             </nav>
           </div>

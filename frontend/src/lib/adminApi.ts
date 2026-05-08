@@ -54,5 +54,16 @@ export const adminApi = {
   },
 
   getCategories: () => request('/categories'),
-  getBrands: () => request('/brands'),
+  getBrands:     () => request('/brands'),
+
+  // Beauty Consultant
+  consultantClients: (params?: Record<string, string>) => {
+    const qs = params ? '?' + new URLSearchParams(params).toString() : ''
+    return request(`/consultant/clients${qs}`)
+  },
+  consultantGetClient: (userId: string) => request(`/consultant/clients/${userId}`),
+  consultantAddNote:   (userId: string, note: string) =>
+    request(`/consultant/clients/${userId}/notes`, { method: 'POST', body: JSON.stringify({ note }) }),
+  consultantRecommend: (userId: string, productId: string) =>
+    request(`/consultant/clients/${userId}/recommend`, { method: 'POST', body: JSON.stringify({ productId }) }),
 }

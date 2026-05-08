@@ -173,6 +173,16 @@ def get_product(slug):
     result = product.to_dict(include_details=True)
     result['relatedProducts'] = [p.to_dict() for p in related]
 
+    # Full reviews list (not capped at 10) + rating breakdown
+    all_reviews = product.reviews
+    result['reviews'] = [r.to_dict() for r in all_reviews]
+    breakdown = {str(i): 0 for i in range(1, 6)}
+    for r in all_reviews:
+        if r.rating and 1 <= r.rating <= 5:
+            breakdown[str(r.rating)] += 1
+    result['ratingBreakdown'] = breakdown
+    result['reviewCount'] = len(all_reviews)
+
     return jsonify({'product': result})
 
 
@@ -201,6 +211,38 @@ def add_review(product_id):
     db.session.commit()
 
     return jsonify({'review': review.to_dict()}), 201
+
+
+@products_bp.route('/reviews/recent', methods=['GET'])
+def recent_reviews():
+    limit = min(request.args.get('limit', 6, type=int), 20)
+    reviews = (
+        Review.query
+        .filter(Review.body != None, Review.body != '', Review.rating >= 4)
+        .order_by(desc(Review.created_at))
+        .limit(limit)
+        .all()
+    )
+    result = []
+    for r in reviews:
+        p = r.product
+        if r.reviewer_name:
+            name = r.reviewer_name
+        elif r.user:
+            name = f"{r.user.first_name} {r.user.last_name[0]}."
+        else:
+            name = 'Anonymous'
+        result.append({
+            'id': str(r.id),
+            'name': name,
+            'rating': r.rating,
+            'title': r.title,
+            'body': r.body,
+            'productName': p.name if p else '',
+            'productSlug': p.slug if p else '',
+            'createdAt': r.created_at.isoformat() if r.created_at else None,
+        })
+    return jsonify({'reviews': result})
 
 
 @products_bp.route('/search/suggestions', methods=['GET'])

@@ -7,12 +7,14 @@ import { useAuthStore, useCartStore, useUIStore, useWishlistStore } from '@/lib/
 import { motion, AnimatePresence } from 'framer-motion'
 import { SearchOverlay } from './SearchOverlay'
 
-const NAV_LINKS: { href: string; label: string; highlight?: boolean }[] = [
-  { href: '/products?category=makeup',    label: 'Makeup' },
-  { href: '/products?category=skincare',  label: 'Skincare' },
-  { href: '/products?category=fragrance', label: 'Fragrance' },
-  { href: '/products?category=tools',     label: 'Tools' },
-  { href: '/shop-the-look',               label: 'Shop the Look', highlight: true },
+const NAV_LINKS: { href: string; label: string; highlight?: boolean; badge?: string }[] = [
+  { href: '/products?category=makeup',            label: 'Makeup' },
+  { href: '/products?category=skincare',          label: 'Skincare' },
+  { href: '/products?category=fragrance',         label: 'Fragrance' },
+  { href: '/products?category=tools',             label: 'Tools' },
+  { href: '/products?sort=created_at&order=desc', label: 'New Arrivals', badge: 'New' },
+  { href: '/products?sort=rating&order=desc',     label: 'Best Sellers' },
+  { href: '/shop-the-look',                       label: 'Shop the Look', highlight: true },
 ]
 
 export function Navbar() {
@@ -87,12 +89,18 @@ export function Navbar() {
                   key={link.href}
                   href={link.href}
                   className="font-sans text-xs tracking-[0.14em] uppercase transition-all duration-200
-                             relative group"
+                             relative group flex items-center gap-1.5"
                   style={{ color: '#7A736F' }}
                   onMouseEnter={e => (e.currentTarget.style.color = '#3E3A39')}
                   onMouseLeave={e => (e.currentTarget.style.color = '#7A736F')}
                 >
                   {link.label}
+                  {link.badge && (
+                    <span className="font-sans text-[8px] tracking-wider uppercase px-1.5 py-0.5 rounded-full text-white"
+                      style={{ background: '#C6A9A3', lineHeight: 1 }}>
+                      {link.badge}
+                    </span>
+                  )}
                   <span className="absolute -bottom-0.5 left-0 w-0 h-px group-hover:w-full transition-all duration-300"
                     style={{ background: '#C6A9A3' }} />
                 </Link>

@@ -9,15 +9,15 @@ import Link from 'next/link'
 import toast from 'react-hot-toast'
 import { motion } from 'framer-motion'
 import {
-  LogOut, User, ShoppingBag, Heart, Sparkles, Settings,
-  Package, ChevronRight, Star, Camera, Shield,
+  LogOut, User, ShoppingBag, Heart, Sparkles,
+  Package, ChevronRight, Star, Camera, Shield, HeartHandshake,
 } from 'lucide-react'
 
 // ── Constants ──────────────────────────────────────────────────────────────
 const SKIN_TONES = ['Fair', 'Light', 'Medium', 'Tan', 'Deep']
 const SKIN_TYPES = ['Dry', 'Normal', 'Oily', 'Combination', 'Sensitive']
 
-type Tab = 'overview' | 'orders' | 'wishlist' | 'profile' | 'security'
+type Tab = 'overview' | 'orders' | 'wishlist' | 'advisor' | 'profile' | 'security'
 
 const STATUS_COLORS: Record<string, string> = {
   pending:    'bg-amber-100 text-amber-700',
@@ -29,11 +29,12 @@ const STATUS_COLORS: Record<string, string> = {
 }
 
 const NAV_ITEMS: { id: Tab; label: string; icon: React.ReactNode }[] = [
-  { id: 'overview',  label: 'Overview',      icon: <Star size={15} /> },
-  { id: 'orders',    label: 'My Orders',     icon: <Package size={15} /> },
-  { id: 'wishlist',  label: 'Wishlist',      icon: <Heart size={15} /> },
-  { id: 'profile',   label: 'Edit Profile',  icon: <User size={15} /> },
-  { id: 'security',  label: 'Security',      icon: <Shield size={15} /> },
+  { id: 'overview',  label: 'Overview',        icon: <Star size={15} /> },
+  { id: 'orders',    label: 'My Orders',       icon: <Package size={15} /> },
+  { id: 'wishlist',  label: 'Wishlist',        icon: <Heart size={15} /> },
+  { id: 'advisor',   label: 'Beauty Advisor',  icon: <HeartHandshake size={15} /> },
+  { id: 'profile',   label: 'Edit Profile',    icon: <User size={15} /> },
+  { id: 'security',  label: 'Security',        icon: <Shield size={15} /> },
 ]
 
 // ── Helpers ────────────────────────────────────────────────────────────────
@@ -66,6 +67,9 @@ export default function AccountPage() {
   const [saving, setSaving] = useState(false)
   const [pwForm, setPwForm] = useState({ currentPassword: '', newPassword: '', confirmPassword: '' })
   const [pwSaving, setPwSaving] = useState(false)
+  const [recommendations, setRecommendations] = useState<any[]>([])
+  const [advisorNotes, setAdvisorNotes] = useState<{ text: string; createdAt: string }[]>([])
+  const [recsLoading, setRecsLoading] = useState(false)
 
   // Redirect if not authenticated
   useEffect(() => {
@@ -85,6 +89,26 @@ export default function AccountPage() {
       })
     }
   }, [user])
+
+  // Fetch advisor recommendations
+  useEffect(() => {
+    if (activeTab !== 'advisor') return
+    setRecsLoading(true)
+    const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api'
+    import('js-cookie').then(({ default: Cookies }) => {
+      const token = Cookies.get('access_token')
+      fetch(`${API_URL}/auth/recommendations`, {
+        headers: { Authorization: `Bearer ${token}` },
+      })
+        .then(r => r.json())
+        .then(d => {
+          setRecommendations(d.recommendations ?? [])
+          setAdvisorNotes(d.notes ?? [])
+        })
+        .catch(() => { setRecommendations([]); setAdvisorNotes([]) })
+        .finally(() => setRecsLoading(false))
+    })
+  }, [activeTab])
 
   // Fetch orders when relevant tab is active
   useEffect(() => {
@@ -491,6 +515,136 @@ export default function AccountPage() {
                         </Link>
                       </div>
                     )}
+                  </div>
+                </div>
+              )}
+
+              {/* ── Beauty Advisor ────────────────────────────────────── */}
+              {activeTab === 'advisor' && (
+                <div className="space-y-6">
+                  <div>
+                    <h1 className="font-display text-3xl text-charcoal">Beauty Advisor</h1>
+                    <p className="font-sans text-sm text-charcoal-soft mt-1">
+                      Products personally selected for you by your beauty consultant.
+                    </p>
+                  </div>
+
+                  <div className="bg-white border border-gray-100 rounded-2xl shadow-sm overflow-hidden">
+                    {/* Header banner */}
+                    <div className="px-6 py-5 flex items-center gap-4"
+                      style={{ background: 'linear-gradient(135deg, rgba(198,169,163,0.12), rgba(198,169,163,0.04))' }}>
+                      <div className="w-10 h-10 rounded-full flex items-center justify-center shrink-0"
+                        style={{ background: 'linear-gradient(135deg,#C6A9A3,#A08070)' }}>
+                        <HeartHandshake size={18} className="text-white" />
+                      </div>
+                      <div>
+                        <p className="font-display text-lg" style={{ color: '#3E3A39' }}>
+                          Your Beauty Expert Picks
+                        </p>
+                        <p className="font-sans text-xs" style={{ color: '#A89E99' }}>
+                          Curated just for your skin profile
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="p-6">
+                      {/* Advisor notes */}
+                      {!recsLoading && advisorNotes.length > 0 && (
+                        <div className="mb-6 space-y-3">
+                          <p className="font-sans text-[10px] tracking-[0.2em] uppercase font-semibold"
+                            style={{ color: '#A89E99' }}>
+                            Messages from your advisor
+                          </p>
+                          {[...advisorNotes].reverse().map((n, i) => (
+                            <div key={i} className="rounded-xl px-4 py-3 flex gap-3"
+                              style={{ background: 'rgba(198,169,163,0.07)', border: '1px solid rgba(198,169,163,0.15)' }}>
+                              <div className="w-7 h-7 rounded-full shrink-0 flex items-center justify-center mt-0.5"
+                                style={{ background: 'linear-gradient(135deg,#C6A9A3,#A08070)' }}>
+                                <HeartHandshake size={13} className="text-white" />
+                              </div>
+                              <div className="flex-1 min-w-0">
+                                <p className="font-sans text-sm leading-relaxed" style={{ color: '#3E3A39' }}>
+                                  {n.text}
+                                </p>
+                                <p className="font-sans text-[10px] mt-1.5" style={{ color: '#A89E99' }}>
+                                  {new Date(n.createdAt).toLocaleDateString('en-US', {
+                                    day: '2-digit', month: 'short', year: 'numeric'
+                                  })}
+                                </p>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+
+                      {recsLoading ? (
+                        <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+                          {[1,2,3].map(i => (
+                            <div key={i} className="skeleton rounded-xl h-64" />
+                          ))}
+                        </div>
+                      ) : recommendations.length === 0 && advisorNotes.length === 0 ? (
+                        <div className="text-center py-14">
+                          <div className="w-16 h-16 rounded-full mx-auto mb-4 flex items-center justify-center"
+                            style={{ background: 'rgba(198,169,163,0.1)' }}>
+                            <HeartHandshake size={28} style={{ color: '#C6A9A3' }} />
+                          </div>
+                          <p className="font-display text-xl text-charcoal mb-2">
+                            No recommendations yet
+                          </p>
+                          <p className="font-sans text-sm text-charcoal-soft max-w-xs mx-auto">
+                            Your beauty advisor hasn't sent any personalized picks yet. Check back soon!
+                          </p>
+                        </div>
+                      ) : recommendations.length === 0 ? null : (
+                        <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+                          {recommendations.map((p: any) => (
+                            <a key={p.id} href={`/products/${p.slug}`}
+                              className="group rounded-xl overflow-hidden border transition-all duration-200 hover:shadow-md"
+                              style={{ borderColor: 'rgba(198,169,163,0.15)' }}
+                              onMouseEnter={e => (e.currentTarget.style.borderColor = 'rgba(198,169,163,0.4)')}
+                              onMouseLeave={e => (e.currentTarget.style.borderColor = 'rgba(198,169,163,0.15)')}
+                            >
+                              {/* Image */}
+                              <div className="aspect-square overflow-hidden"
+                                style={{ background: '#F7F0EE' }}>
+                                {p.primaryImage ? (
+                                  <img src={p.primaryImage} alt={p.name}
+                                    className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105" />
+                                ) : (
+                                  <div className="w-full h-full flex items-center justify-center">
+                                    <ShoppingBag size={28} style={{ color: '#EDE5E3' }} />
+                                  </div>
+                                )}
+                              </div>
+                              {/* Info */}
+                              <div className="p-3">
+                                {p.brand && (
+                                  <p className="font-sans text-[10px] tracking-widest uppercase mb-0.5"
+                                    style={{ color: '#C6A9A3' }}>
+                                    {p.brand}
+                                  </p>
+                                )}
+                                <p className="font-sans text-xs font-medium leading-snug line-clamp-2 mb-2"
+                                  style={{ color: '#3E3A39' }}>
+                                  {p.name}
+                                </p>
+                                <div className="flex items-center justify-between">
+                                  <span className="font-sans text-sm font-semibold" style={{ color: '#3E3A39' }}>
+                                    ${p.price.toFixed(2)}
+                                  </span>
+                                  {p.compareAtPrice && p.compareAtPrice > p.price && (
+                                    <span className="font-sans text-xs line-through" style={{ color: '#A89E99' }}>
+                                      ${p.compareAtPrice.toFixed(2)}
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
+                            </a>
+                          ))}
+                        </div>
+                      )}
+                    </div>
                   </div>
                 </div>
               )}
