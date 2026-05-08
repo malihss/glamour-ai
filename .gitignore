@@ -2,26 +2,26 @@
 .DS_Store
 __MACOSX/
 
-# Editor
+# VSCode / IDE
 .vscode/
 .idea/
 
-# Claude
+# Claude / AI tools
 .claude/
 
-# Python caches (all subdirs)
-**/__pycache__/
-**/*.py[cod]
-**/*.pyo
-**/*.pyd
+# Python
+venv/
+env/
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.pyc
 
-# Node
-**/node_modules/
+# Node / Next.js
+node_modules/
+.next/
+*.tsbuildinfo
 
-# Next.js build
-**/.next/
-
-# Virtual envs
-**/venv/
-**/venv_windows_backup/
-**/env/
+# Environment files
+.env
