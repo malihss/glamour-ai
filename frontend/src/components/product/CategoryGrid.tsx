@@ -9,7 +9,7 @@ const CATEGORIES = [
     slug: 'makeup',
     name: 'Makeup',
     description: 'Lips, eyes & face colour',
-    image: 'https://i.pinimg.com/736x/be/16/53/be16539c68629eb749e45ed23a7c126c.jpg',
+    image: '/makeup-hero.jpg',
     accent: '#C6A9A3',
     label: '01',
   },

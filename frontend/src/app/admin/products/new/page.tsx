@@ -23,6 +23,7 @@ export default function NewProductPage() {
       categoryId:       values.categoryId ? parseInt(values.categoryId) : null,
       brandId:          values.brandId    ? parseInt(values.brandId)    : null,
       tags:             values.tags,
+      fragranceNotes:   values.fragranceNotes,
     })
     toast.success('Product created!')
     router.push('/admin/products')

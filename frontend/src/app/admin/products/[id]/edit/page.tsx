@@ -34,6 +34,15 @@ export default function EditProductPage() {
           isFeatured:       p.isFeatured ?? false,
           isActive:         p.isActive   ?? true,
           tags:             p.tags ?? [],
+          fragranceNotes: {
+            top:      p.notes_top         ?? [],
+            middle:   p.notes_middle      ?? [],
+            base:     p.notes_base        ?? [],
+            longevity: p.longevity        ?? '',
+            sillage:   p.sillage          ?? '',
+            gender:    p.gender           ?? '',
+            family:    p.fragrance_family ?? '',
+          },
         })
       })
       .catch(() => {
@@ -58,6 +67,7 @@ export default function EditProductPage() {
       categoryId:       values.categoryId ? parseInt(values.categoryId) : null,
       brandId:          values.brandId    ? parseInt(values.brandId)    : null,
       tags:             values.tags,
+      fragranceNotes:   values.fragranceNotes,
     })
     toast.success('Product updated!')
     router.push('/admin/products')

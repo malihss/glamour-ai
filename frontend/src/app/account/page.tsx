@@ -10,7 +10,7 @@ import toast from 'react-hot-toast'
 import { motion } from 'framer-motion'
 import {
   LogOut, User, ShoppingBag, Heart, Sparkles,
-  Package, ChevronRight, Star, Camera, Shield, HeartHandshake,
+  Package, ChevronRight, Star, Camera, Shield, HeartHandshake, Flame,
 } from 'lucide-react'
 
 // ── Constants ──────────────────────────────────────────────────────────────
@@ -364,7 +364,7 @@ export default function AccountPage() {
                   </div>
 
                   {/* Quick actions */}
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                     <Link
                       href="/tryon"
                       className="bg-charcoal rounded-2xl p-6 flex items-center justify-between group hover:bg-charcoal-light transition-colors"
@@ -374,6 +374,17 @@ export default function AccountPage() {
                         <p className="font-sans text-xs text-white/60">See makeup on your face</p>
                       </div>
                       <Sparkles size={28} className="text-champagne group-hover:scale-110 transition-transform" />
+                    </Link>
+                    <Link
+                      href="/journey"
+                      className="rounded-2xl p-6 flex items-center justify-between group hover:opacity-90 transition-opacity"
+                      style={{ background: 'linear-gradient(135deg,#C6A9A3,#A08070)' }}
+                    >
+                      <div>
+                        <p className="font-display text-lg text-white mb-1">Beauty Journey</p>
+                        <p className="font-sans text-xs text-white/60">Track your skin progress</p>
+                      </div>
+                      <Flame size={28} className="text-white/80 group-hover:scale-110 transition-transform" />
                     </Link>
                     <Link
                       href="/products"

@@ -167,6 +167,13 @@ class Product(db.Model):
             'category': self.category.to_dict() if self.category else None,
             'variants': [v.to_dict() for v in self.variants if v.is_active],
         }
+        # Always expose fragrance metadata (safe, non-sensitive)
+        if self.meta:
+            for key in ('notes_top', 'notes_middle', 'notes_base',
+                        'longevity', 'sillage', 'gender', 'fragrance_family',
+                        'release_year', 'perfume_url'):
+                if key in self.meta:
+                    data[key] = self.meta[key]
         if include_details:
             data['description'] = self.description
             data['images'] = [img.to_dict() for img in self.images]
@@ -422,4 +429,36 @@ class ChatMessage(db.Model):
             'role': self.role,
             'content': self.content,
             'createdAt': self.created_at.isoformat() if self.created_at else None
+        }
+
+
+class SkinEntry(db.Model):
+    __tablename__ = 'skin_entries'
+
+    id           = db.Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id      = db.Column(UUID(as_uuid=True), db.ForeignKey('users.id'), nullable=False)
+    date         = db.Column(db.Date, nullable=False)
+    photo        = db.Column(Text)                      # base64 data-url (thumbnail)
+    overall      = db.Column(db.Integer)                # 1-10
+    hydration    = db.Column(db.Integer)                # 1-10
+    clarity      = db.Column(db.Integer)                # 1-10
+    texture      = db.Column(db.Integer)                # 1-10
+    products_used = db.Column(JSONB, default=[])        # [{ id, name }]
+    notes        = db.Column(Text)
+    ai_insights  = db.Column(Text)
+    created_at   = db.Column(db.DateTime, default=datetime.utcnow)
+
+    def to_dict(self):
+        return {
+            'id':           str(self.id),
+            'date':         self.date.isoformat() if self.date else None,
+            'photo':        self.photo,
+            'overall':      self.overall,
+            'hydration':    self.hydration,
+            'clarity':      self.clarity,
+            'texture':      self.texture,
+            'productsUsed': self.products_used or [],
+            'notes':        self.notes,
+            'aiInsights':   self.ai_insights,
+            'createdAt':    self.created_at.isoformat() if self.created_at else None,
         }

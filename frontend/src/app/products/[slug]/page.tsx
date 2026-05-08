@@ -297,6 +297,54 @@ export default function ProductDetailPage() {
               </Link>
             </div>
 
+            {/* Fragrance notes — only shown when present */}
+            {(product.notes_top || product.notes_middle || product.notes_base) && (
+              <div className="mb-6 p-5 border border-champagne/20"
+                style={{ background: 'linear-gradient(135deg,rgba(198,169,163,0.04),rgba(160,128,112,0.06))' }}>
+                <p className="font-sans text-[9px] tracking-[0.3em] uppercase mb-5" style={{ color: '#C6A9A3' }}>
+                  Fragrance Notes
+                </p>
+                <div className="grid grid-cols-3 gap-4">
+                  {[
+                    { label: 'Top Notes', items: product.notes_top, symbol: '◈' },
+                    { label: 'Heart Notes', items: product.notes_middle, symbol: '♡' },
+                    { label: 'Base Notes', items: product.notes_base, symbol: '◇' },
+                  ].map(({ label, items, symbol }) => items?.length > 0 && (
+                    <div key={label}>
+                      <p className="font-sans text-[8px] tracking-[0.2em] uppercase mb-2.5 flex items-center gap-1"
+                        style={{ color: '#A08070' }}>
+                        <span>{symbol}</span> {label}
+                      </p>
+                      <ul className="space-y-1.5">
+                        {items.map((note: string) => (
+                          <li key={note} className="font-serif text-xs" style={{ color: '#5C5450' }}>{note}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  ))}
+                </div>
+                {(product.longevity || product.sillage || product.gender) && (
+                  <div className="mt-5 pt-4 flex flex-wrap gap-x-6 gap-y-2 border-t border-champagne/15">
+                    {product.longevity && (
+                      <span className="font-sans text-[10px]" style={{ color: '#7A736F' }}>
+                        <span style={{ color: '#C6A9A3' }}>Longevity</span> · {product.longevity}
+                      </span>
+                    )}
+                    {product.sillage && (
+                      <span className="font-sans text-[10px]" style={{ color: '#7A736F' }}>
+                        <span style={{ color: '#C6A9A3' }}>Sillage</span> · {product.sillage}
+                      </span>
+                    )}
+                    {product.gender && (
+                      <span className="font-sans text-[10px]" style={{ color: '#7A736F' }}>
+                        <span style={{ color: '#C6A9A3' }}>For</span> · {product.gender}
+                      </span>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+
             {/* Description accordion */}
             <div className="border-t border-champagne/20">
               <button onClick={() => setDescOpen(!descOpen)}

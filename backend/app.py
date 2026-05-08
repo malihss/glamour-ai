@@ -21,6 +21,8 @@ from routes.tryon import tryon_bp
 from routes.wishlist import wishlist_bp
 from routes.admin import admin_bp
 from routes.payment import payment_bp
+from routes.tracker import tracker_bp
+from routes.routine import routine_bp
 
 
 def create_app(config_class=Config):
@@ -57,6 +59,8 @@ def create_app(config_class=Config):
     app.register_blueprint(wishlist_bp, url_prefix='/api/wishlist')
     app.register_blueprint(admin_bp, url_prefix='/api/admin')
     app.register_blueprint(payment_bp, url_prefix='/api/payment')
+    app.register_blueprint(tracker_bp,  url_prefix='/api/tracker')
+    app.register_blueprint(routine_bp,  url_prefix='/api/routine')
 
     # Health check
     @app.route('/api/health')

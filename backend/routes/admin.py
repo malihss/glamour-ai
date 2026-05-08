@@ -237,6 +237,17 @@ def create_product():
         slug = f'{base_slug}-{i}'
         i += 1
 
+    meta = {}
+    if data.get('fragranceNotes'):
+        fn = data['fragranceNotes']
+        if fn.get('top'):    meta['notes_top']    = fn['top']
+        if fn.get('middle'): meta['notes_middle'] = fn['middle']
+        if fn.get('base'):   meta['notes_base']   = fn['base']
+        if fn.get('longevity'): meta['longevity'] = fn['longevity']
+        if fn.get('sillage'):   meta['sillage']   = fn['sillage']
+        if fn.get('gender'):    meta['gender']    = fn['gender']
+        if fn.get('family'):    meta['fragrance_family'] = fn['family']
+
     product = Product(
         name=name,
         slug=slug,
@@ -252,6 +263,7 @@ def create_product():
         brand_id=data.get('brandId'),
         category_id=data.get('categoryId'),
         tags=data.get('tags') or [],
+        meta=meta,
     )
     db.session.add(product)
     db.session.flush()
@@ -295,6 +307,20 @@ def update_product(product_id):
     if 'brandId' in data:       p.brand_id = data['brandId']
     if 'categoryId' in data:    p.category_id = data['categoryId']
     if 'tags' in data:          p.tags = data['tags'] or []
+
+    if 'fragranceNotes' in data:
+        fn = data['fragranceNotes'] or {}
+        meta = dict(p.meta or {})
+        for k in ('notes_top', 'notes_middle', 'notes_base', 'longevity', 'sillage', 'gender'):
+            meta.pop(k, None)
+        if fn.get('top'):    meta['notes_top']    = fn['top']
+        if fn.get('middle'): meta['notes_middle'] = fn['middle']
+        if fn.get('base'):   meta['notes_base']   = fn['base']
+        if fn.get('longevity'): meta['longevity'] = fn['longevity']
+        if fn.get('sillage'):   meta['sillage']   = fn['sillage']
+        if fn.get('gender'):    meta['gender']    = fn['gender']
+        if fn.get('family'):    meta['fragrance_family'] = fn['family']
+        p.meta = meta
 
     if 'imageUrl' in data and data['imageUrl']:
         existing = ProductImage.query.filter_by(product_id=p.id, is_primary=True).first()
