@@ -1,13 +1,13 @@
 'use client'
 // src/app/checkout/page.tsx
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
 import { useCartStore, useAuthStore } from '@/lib/store'
 import { ordersAPI, paymentAPI } from '@/lib/api'
 import Link from 'next/link'
 import Image from 'next/image'
-import { CheckCircle, Lock, CreditCard, ShieldCheck, Truck } from 'lucide-react'
+import { CheckCircle, Lock, CreditCard, ShieldCheck, Truck, Eye, EyeOff } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
 import toast from 'react-hot-toast'
 
@@ -40,6 +40,25 @@ const EMPTY_ADDR = {
   firstName: '', lastName: '', street: '', city: '', state: '', postalCode: '', country: 'United States',
 }
 
+// ── Card validation utilities ─────────────────────────────────────────────────
+function luhnCheck(digits: string): boolean {
+  if (!/^\d{13,19}$/.test(digits)) return false
+  let sum = 0, odd = true
+  for (let i = digits.length - 1; i >= 0; i--) {
+    let d = +digits[i]
+    if (!odd) { d *= 2; if (d > 9) d -= 9 }
+    sum += d; odd = !odd
+  }
+  return sum % 10 === 0
+}
+
+function detectCardType(num: string): 'visa' | 'mastercard' | 'amex' | null {
+  if (/^4/.test(num)) return 'visa'
+  if (/^(5[1-5]|2[2-7])/.test(num)) return 'mastercard'
+  if (/^3[47]/.test(num)) return 'amex'
+  return null
+}
+
 // ── Shared checkout logic — receives stripe/elements as props ─────────────────
 interface CheckoutFormProps {
   stripe: Stripe | null
@@ -60,6 +79,12 @@ function CheckoutFormBase({ stripe, elements, onOrderComplete }: CheckoutFormPro
   const [loading, setLoading]   = useState(false)
   const [order, setOrder]       = useState<any>(null)
   const [cardError, setCardError] = useState<string | null>(null)
+  const [cardNumber, setCardNumber] = useState('')
+  const [cardExpiry, setCardExpiry] = useState('')
+  const [cardCvc, setCardCvc]       = useState('')
+  const [showCvc, setShowCvc]       = useState(false)
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({})
+  const cardType = useMemo(() => detectCardType(cardNumber.replace(/\s/g, '')), [cardNumber])
 
   const subtotal     = cart?.subtotal || 0
   const shippingCost = subtotal >= 75 ? 0 : 9.95
@@ -71,12 +96,38 @@ function CheckoutFormBase({ stripe, elements, onOrderComplete }: CheckoutFormPro
 
   const handleContinue = () => {
     if (!validateAddress(shipping)) { toast.error('Please fill in all shipping fields'); return }
+    if (!sameBilling && !validateAddress(billing)) { toast.error('Please fill in all billing fields'); return }
     setStep(2)
     window.scrollTo({ top: 0, behavior: 'smooth' })
   }
 
   const handlePay = useCallback(async () => {
     if (!cardName.trim()) { toast.error('Please enter the name on your card'); return }
+
+    // ── Demo card validation ──────────────────────────────────────────────────
+    if (IS_DEMO) {
+      const errs: Record<string, string> = {}
+      const raw = cardNumber.replace(/\s/g, '')
+      const isAmex = /^3[47]/.test(raw)
+      const expectedLen = isAmex ? 15 : 16
+      if (raw.length < expectedLen) {
+        errs.cardNumber = 'Enter a complete card number'
+      } else if (!luhnCheck(raw)) {
+        errs.cardNumber = 'Invalid card number — please check again'
+      }
+      const em = cardExpiry.match(/^(\d{2})\s*\/\s*(\d{2})$/)
+      if (!em) {
+        errs.cardExpiry = 'Enter expiry as MM / YY'
+      } else {
+        const m = parseInt(em[1]), y = 2000 + parseInt(em[2])
+        if (m < 1 || m > 12) errs.cardExpiry = 'Invalid month'
+        else if (new Date(y, m) <= new Date()) errs.cardExpiry = 'This card has expired'
+      }
+      const expectedCvc = isAmex ? 4 : 3
+      if (!cardCvc || cardCvc.length < expectedCvc) errs.cardCvc = `CVC must be ${expectedCvc} digits`
+      if (Object.keys(errs).length) { setFieldErrors(errs); return }
+    }
+
     setLoading(true)
     setCardError(null)
 
@@ -115,28 +166,24 @@ function CheckoutFormBase({ stripe, elements, onOrderComplete }: CheckoutFormPro
 
       // ── Create order in backend ───────────────────────────────────────────
       const billingAddr = sameBilling ? shipping : billing
-      try {
-        const { data: orderData } = await ordersAPI.checkout({
-          shippingAddress: { street: shipping.street,   city: shipping.city,   state: shipping.state,   postalCode: shipping.postalCode,   country: shipping.country },
-          billingAddress:  { street: billingAddr.street, city: billingAddr.city, state: billingAddr.state, postalCode: billingAddr.postalCode, country: billingAddr.country },
-        })
-        setOrder(orderData.order)
-      } catch {
-        setOrder({ orderNumber: `GA-DEMO-${Date.now().toString(36).toUpperCase()}` })
-      }
+      const { data: orderData } = await ordersAPI.checkout({
+        shippingAddress: { street: shipping.street,   city: shipping.city,   state: shipping.state,   postalCode: shipping.postalCode,   country: shipping.country },
+        billingAddress:  { street: billingAddr.street, city: billingAddr.city, state: billingAddr.state, postalCode: billingAddr.postalCode, country: billingAddr.country },
+      })
+      setOrder(orderData.order)
 
-      // Mark order as complete BEFORE clearing cart so the page guard
-      // doesn't redirect to "bag is empty" when cart becomes null
+      // Only clear cart + advance to success once the order is confirmed
       onOrderComplete(true)
       setCart(null)
       setStep(3)
       window.scrollTo({ top: 0, behavior: 'smooth' })
-    } catch {
-      toast.error('Something went wrong. Please try again.')
+    } catch (err: any) {
+      const msg = err?.response?.data?.error || 'Something went wrong. Please try again.'
+      toast.error(msg)
     } finally {
       setLoading(false)
     }
-  }, [stripe, elements, cardName, shipping, billing, sameBilling, setCart, onOrderComplete])
+  }, [stripe, elements, cardName, cardNumber, cardExpiry, cardCvc, shipping, billing, sameBilling, setCart, onOrderComplete])
 
   // ── Step 3 ──────────────────────────────────────────────────────────────────
   if (step === 3 && order) {
@@ -156,7 +203,7 @@ function CheckoutFormBase({ stripe, elements, onOrderComplete }: CheckoutFormPro
             <div className="flex items-center gap-3"><ShieldCheck size={16} className="text-champagne flex-shrink-0" /><p className="font-sans text-xs text-charcoal">Confirmation sent to {user?.email}</p></div>
           </div>
           <div className="flex gap-4 justify-center">
-            <Link href="/account" className="btn-secondary">View Orders</Link>
+            <Link href="/account/orders" className="btn-secondary">View Orders</Link>
             <Link href="/products" className="btn-primary">Continue Shopping</Link>
           </div>
         </motion.div>
@@ -253,14 +300,63 @@ function CheckoutFormBase({ stripe, elements, onOrderComplete }: CheckoutFormPro
                 <button onClick={() => setStep(1)} className="font-sans text-xs text-champagne hover:underline shrink-0">Edit</button>
               </div>
 
-              {/* Card brand icons */}
+              {/* ── Visual card preview (demo only) ─────────────────────── */}
+              {IS_DEMO && (
+                <motion.div
+                  layout
+                  className="relative h-48 rounded-2xl p-6 mb-8 overflow-hidden select-none"
+                  style={{ background: 'linear-gradient(135deg, #1A1614 0%, #2D2825 50%, #3E3A39 100%)', boxShadow: '0 20px 60px rgba(0,0,0,0.25), inset 0 1px 0 rgba(255,255,255,0.06)' }}
+                >
+                  <div className="absolute -top-10 -right-10 w-40 h-40 rounded-full bg-champagne/6 pointer-events-none" />
+                  <div className="absolute -bottom-10 -left-6 w-28 h-28 rounded-full bg-champagne/4 pointer-events-none" />
+
+                  {/* Chip */}
+                  <div className="relative w-10 h-7 rounded-sm overflow-hidden mb-5"
+                       style={{ background: 'linear-gradient(135deg, #C9A96E 0%, #E8D5A3 55%, #A07840 100%)' }}>
+                    <div className="absolute inset-0 grid grid-cols-3 grid-rows-2 gap-px opacity-25">
+                      {[...Array(6)].map((_, i) => <div key={i} className="bg-noir" />)}
+                    </div>
+                  </div>
+
+                  {/* Number */}
+                  <p className="font-mono text-ivory/75 tracking-[0.28em] mb-5 text-sm">
+                    {cardNumber || '•••• •••• •••• ••••'}
+                  </p>
+
+                  {/* Bottom */}
+                  <div className="flex items-end justify-between">
+                    <div className="flex-1 min-w-0 mr-4">
+                      <p className="font-sans text-[8px] tracking-widest uppercase text-ivory/28 mb-0.5">Card Holder</p>
+                      <p className="font-mono text-xs text-ivory/65 uppercase tracking-wider truncate">
+                        {cardName || '— — — — — —'}
+                      </p>
+                    </div>
+                    <div className="mr-5">
+                      <p className="font-sans text-[8px] tracking-widest uppercase text-ivory/28 mb-0.5">Expires</p>
+                      <p className="font-mono text-xs text-ivory/65">{cardExpiry || '•• / ••'}</p>
+                    </div>
+                    <div className="flex-shrink-0 flex items-center">
+                      {cardType === 'visa'       && <span className="font-black text-blue-300/80 text-lg italic tracking-wide">VISA</span>}
+                      {cardType === 'mastercard' && <div className="flex"><div className="w-7 h-7 bg-red-500/60 rounded-full -mr-2.5" /><div className="w-7 h-7 bg-orange-400/60 rounded-full" /></div>}
+                      {cardType === 'amex'       && <span className="font-black text-blue-200/70 text-[10px] tracking-widest leading-tight text-right">AMERICAN<br/>EXPRESS</span>}
+                      {!cardType                 && <CreditCard size={22} className="text-ivory/20" />}
+                    </div>
+                  </div>
+                </motion.div>
+              )}
+
+              {/* Card brand badges */}
               <div className="flex items-center gap-2 mb-5">
                 <CreditCard size={16} className="text-champagne" />
                 <span className="font-sans text-[10px] tracking-[0.2em] uppercase text-charcoal-soft">Card Details</span>
                 <div className="ml-auto flex items-center gap-1.5">
-                  {['visa', 'mastercard', 'amex'].map(brand => (
-                    <div key={brand} className="h-6 px-2 bg-white border border-charcoal/10 rounded flex items-center">
-                      <span className="font-sans text-[9px] font-bold text-charcoal uppercase tracking-wider">{brand}</span>
+                  {(['visa', 'mastercard', 'amex'] as const).map(brand => (
+                    <div key={brand} className={`h-6 px-2 border rounded flex items-center transition-all duration-200 ${
+                      cardType === brand ? 'bg-champagne/10 border-champagne/40' : 'bg-white border-charcoal/10'
+                    }`}>
+                      <span className={`font-sans text-[9px] font-bold uppercase tracking-wider ${
+                        cardType === brand ? 'text-champagne' : 'text-charcoal/50'
+                      }`}>{brand}</span>
                     </div>
                   ))}
                 </div>
@@ -268,27 +364,97 @@ function CheckoutFormBase({ stripe, elements, onOrderComplete }: CheckoutFormPro
 
               {/* Card fields */}
               <div className="space-y-5">
-                {IS_DEMO && (
-                  <div className="bg-amber-50 border border-amber-200 px-4 py-3">
-                    <p className="font-sans text-[10px] tracking-widest uppercase text-amber-700 mb-1">Demo Mode</p>
-                    <p className="font-sans text-xs text-amber-600">No real payment is processed. Enter any details below.</p>
-                  </div>
-                )}
-
                 <div>
                   <label className="label-luxury">Name on Card</label>
-                  <input className="input-luxury" placeholder="Full name" value={cardName} onChange={e => setCardName(e.target.value)} />
+                  <input className="input-luxury" placeholder="Full name as on card"
+                    value={cardName}
+                    onChange={e => { setCardName(e.target.value); if (fieldErrors.cardName) setFieldErrors(p => ({ ...p, cardName: '' })) }}
+                  />
+                  {fieldErrors.cardName && <p className="font-sans text-[10px] text-red-500 mt-1.5">{fieldErrors.cardName}</p>}
                 </div>
 
                 {IS_DEMO ? (
                   <>
+                    {/* Card Number */}
                     <div>
                       <label className="label-luxury">Card Number</label>
-                      <input className="input-luxury font-mono" placeholder="4242 4242 4242 4242" maxLength={19} />
+                      <div className="relative">
+                        <input
+                          className={`input-luxury font-mono pr-14 transition-colors ${fieldErrors.cardNumber ? 'border-red-400' : ''}`}
+                          placeholder="1234 5678 9012 3456"
+                          value={cardNumber}
+                          inputMode="numeric"
+                          onChange={e => {
+                            const raw = e.target.value.replace(/\D/g, '')
+                            const isAmex = /^3[47]/.test(raw)
+                            const limited = raw.slice(0, isAmex ? 15 : 16)
+                            const fmt = isAmex
+                              ? limited.replace(/^(\d{0,4})(\d{0,6})(\d{0,5})$/, (_, a, b, c) => [a, b, c].filter(Boolean).join(' '))
+                              : limited.replace(/(\d{4})(?=\d)/g, '$1 ')
+                            setCardNumber(fmt)
+                            if (fieldErrors.cardNumber) setFieldErrors(p => ({ ...p, cardNumber: '' }))
+                          }}
+                        />
+                        <div className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center">
+                          {cardType === 'visa'       && <span className="font-black text-blue-600 text-[10px] italic">VISA</span>}
+                          {cardType === 'mastercard' && <div className="flex"><div className="w-3.5 h-3.5 bg-red-500 rounded-full -mr-1.5 opacity-80" /><div className="w-3.5 h-3.5 bg-orange-400 rounded-full opacity-80" /></div>}
+                          {cardType === 'amex'       && <span className="font-bold text-blue-600 text-[9px] tracking-wide">AMEX</span>}
+                          {!cardType                 && <CreditCard size={14} className="text-charcoal/25" />}
+                        </div>
+                      </div>
+                      {fieldErrors.cardNumber && <p className="font-sans text-[10px] text-red-500 mt-1.5">{fieldErrors.cardNumber}</p>}
                     </div>
+
+                    {/* Expiry + CVC */}
                     <div className="grid grid-cols-2 gap-5">
-                      <div><label className="label-luxury">Expiry Date</label><input className="input-luxury" placeholder="MM / YY" maxLength={7} /></div>
-                      <div><label className="label-luxury">CVC</label><input className="input-luxury" placeholder="123" maxLength={4} /></div>
+                      <div>
+                        <label className="label-luxury">Expiry Date</label>
+                        <input
+                          className={`input-luxury ${fieldErrors.cardExpiry ? 'border-red-400' : ''}`}
+                          placeholder="MM / YY"
+                          value={cardExpiry}
+                          inputMode="numeric"
+                          onChange={e => {
+                            const raw = e.target.value.replace(/\D/g, '').slice(0, 4)
+                            const fmt = raw.length > 2 ? raw.slice(0, 2) + ' / ' + raw.slice(2) : raw
+                            setCardExpiry(fmt)
+                            if (fieldErrors.cardExpiry) setFieldErrors(p => ({ ...p, cardExpiry: '' }))
+                          }}
+                        />
+                        {fieldErrors.cardExpiry && <p className="font-sans text-[10px] text-red-500 mt-1.5">{fieldErrors.cardExpiry}</p>}
+                      </div>
+                      <div>
+                        <label className="label-luxury">CVC {cardType === 'amex' ? '(4 digits)' : ''}</label>
+                        <div className="relative">
+                          <input
+                            className={`input-luxury pr-10 ${fieldErrors.cardCvc ? 'border-red-400' : ''}`}
+                            placeholder={cardType === 'amex' ? '1234' : '123'}
+                            type={showCvc ? 'text' : 'password'}
+                            value={cardCvc}
+                            inputMode="numeric"
+                            maxLength={cardType === 'amex' ? 4 : 3}
+                            onChange={e => {
+                              const val = e.target.value.replace(/\D/g, '').slice(0, cardType === 'amex' ? 4 : 3)
+                              setCardCvc(val)
+                              if (fieldErrors.cardCvc) setFieldErrors(p => ({ ...p, cardCvc: '' }))
+                            }}
+                          />
+                          <button
+                            type="button"
+                            onClick={() => setShowCvc(v => !v)}
+                            className="absolute right-2 top-1/2 -translate-y-1/2 text-charcoal/35 hover:text-charcoal transition-colors p-1"
+                          >
+                            {showCvc ? <EyeOff size={13} /> : <Eye size={13} />}
+                          </button>
+                        </div>
+                        {fieldErrors.cardCvc && <p className="font-sans text-[10px] text-red-500 mt-1.5">{fieldErrors.cardCvc}</p>}
+                      </div>
+                    </div>
+
+                    {/* Hint */}
+                    <div className="bg-ivory-warm border border-champagne/15 px-4 py-3">
+                      <p className="font-sans text-[10px] tracking-widest uppercase text-champagne mb-1">Test Card</p>
+                      <p className="font-sans text-xs text-charcoal-soft">Use <span className="font-mono text-charcoal">4242 4242 4242 4242</span> · any future date · any 3-digit CVC</p>
                     </div>
                   </>
                 ) : (

@@ -60,7 +60,7 @@ def get_recommendations():
 def similar_products(product_id):
     limit = request.args.get('limit', 4, type=int)
 
-    product = Product.query.get(product_id)
+    product = db.session.get(Product, product_id)
     if not product:
         return jsonify({'error': 'Product not found'}), 404
 

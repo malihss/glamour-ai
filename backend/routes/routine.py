@@ -291,7 +291,7 @@ def generate_routine():
         verify_jwt_in_request(optional=True)
         uid = get_jwt_identity()
         if uid:
-            user = User.query.get(uid)
+            user = db.session.get(User, uid)
     except Exception:
         pass
 
@@ -331,6 +331,6 @@ def generate_routine():
 @routine_bp.route('/saved', methods=['GET'])
 @jwt_required()
 def get_saved():
-    user = User.query.get(get_jwt_identity())
+    user = db.session.get(User, get_jwt_identity())
     saved = (user.preferences or {}).get('saved_routine')
     return jsonify({'saved': saved})

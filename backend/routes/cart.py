@@ -37,15 +37,27 @@ def add_item():
     variant_id = data.get('variantId')
     quantity = max(1, data.get('quantity', 1))
 
-    product = Product.query.get(product_id)
+    product = db.session.get(Product, product_id)
     if not product or not product.is_active:
         return jsonify({'error': 'Product not found'}), 404
 
+    # Stock check
+    if product.stock_quantity is not None and product.stock_quantity < quantity:
+        available = product.stock_quantity
+        if available == 0:
+            return jsonify({'error': 'This product is out of stock'}), 400
+        return jsonify({'error': f'Only {available} left in stock'}), 400
+
     unit_price = float(product.price)
     if variant_id:
-        variant = ProductVariant.query.get(variant_id)
+        variant = db.session.get(ProductVariant, variant_id)
         if variant:
             unit_price += float(variant.price_modifier or 0)
+            if variant.stock_quantity is not None and variant.stock_quantity < quantity:
+                available = variant.stock_quantity
+                if available == 0:
+                    return jsonify({'error': 'This shade is out of stock'}), 400
+                return jsonify({'error': f'Only {available} left for this shade'}), 400
 
     cart = get_or_create_cart(user_id)
 

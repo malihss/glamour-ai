@@ -1,10 +1,12 @@
 'use client'
 
 import { useState, useRef, useEffect, useCallback } from 'react'
-import { Camera, CameraOff, RefreshCw, Download, Sparkles, X, Loader2, Wand2, ShoppingBag, ChevronDown, ChevronUp } from 'lucide-react'
+import { Camera, CameraOff, RefreshCw, Download, Sparkles, X, Loader2, Wand2, ShoppingBag, ChevronDown, ChevronUp, Check } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
 import Link from 'next/link'
 import toast from 'react-hot-toast'
+import { useCartStore, useAuthStore } from '@/lib/store'
+import { cartAPI } from '@/lib/api'
 
 // ── MediaPipe landmark indices ────────────────────────────────────────────────
 const LIP_UP_OUT  = [61,185,40,39,37,0,267,269,270,409,291]
@@ -704,6 +706,8 @@ async function initFaceMesh(): Promise<any> {
 }
 
 // ── Component ─────────────────────────────────────────────────────────────────
+const API_URL = '/api'
+
 export default function TryOnPage() {
   const videoRef      = useRef<HTMLVideoElement>(null)
   const canvasRef     = useRef<HTMLCanvasElement>(null)
@@ -728,8 +732,56 @@ export default function TryOnPage() {
   const [activePanel,   setActivePanel]   = useState<'shades'|'presets'>('shades')
   const [shopOpen,      setShopOpen]      = useState(true)
   const [shades,        setShades]        = useState<Record<string, ShadeCategory>>(FALLBACK_SHADES)
+  const [storeMatches,  setStoreMatches]  = useState<Record<string, any[]>>({})
+  const [storeMatchHex, setStoreMatchHex] = useState<Record<string, string>>({})
+  const [loadingMatches,setLoadingMatches]= useState<Record<string, boolean>>({})
+  const [addedIds,      setAddedIds]      = useState<Set<string>>(new Set())
+  const [addingId,      setAddingId]      = useState<string | null>(null)
+
+  const { setCart, setOpen } = useCartStore()
+  const { isAuthenticated }  = useAuthStore()
 
   useEffect(() => { makeupRef.current = selectedMakeup }, [selectedMakeup])
+
+  // ── Fetch matching real store products for selected makeup types ──────────
+  useEffect(() => {
+    const SEARCH_TERMS: Partial<Record<MakeupType, string>> = {
+      lipstick:    'lipstick',
+      eyeshadow:   'eyeshadow',
+      eyeliner:    'eyeliner',
+      blush:       'blush',
+      contour:     'contour',
+      highlighter: 'highlighter',
+      foundation:  'foundation',
+      mascara:     'mascara',
+    }
+    const activeTypes = (Object.keys(selectedMakeup) as MakeupType[]).filter(t => selectedMakeup[t])
+    if (!activeTypes.length) return
+
+    activeTypes.forEach(async type => {
+      const shade = selectedMakeup[type]
+      const hex = shade?.hex ?? ''
+      // Re-fetch whenever the selected shade hex changes
+      if ((storeMatches[type]?.length && storeMatchHex[type] === hex) || loadingMatches[type]) return
+      setLoadingMatches(prev => ({ ...prev, [type]: true }))
+      try {
+        const term = SEARCH_TERMS[type] ?? type
+        const params = new URLSearchParams({ search: term, limit: '5', is_active: 'true' })
+        if (hex) params.set('shade_hex', hex)
+        const res = await fetch(`${API_URL}/products/?${params}`)
+        if (!res.ok) return
+        const { products } = await res.json()
+        if (products?.length) {
+          setStoreMatches(prev => ({ ...prev, [type]: products }))
+          setStoreMatchHex(prev => ({ ...prev, [type]: hex }))
+        }
+      } catch {}
+      finally {
+        setLoadingMatches(prev => ({ ...prev, [type]: false }))
+      }
+    })
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedMakeup])
 
   // ── Live shades from makeup-api.herokuapp.com ─────────────────────────────
   useEffect(() => {
@@ -951,6 +1003,29 @@ export default function TryOnPage() {
     a.href = src; a.download = 'glamour-ai-look.jpg'; a.click()
     toast.success('Saved!')
   }, [photoResult, capturedPhoto, mode])
+
+  const addToCart = async (product: any, variantId?: string) => {
+    if (!isAuthenticated) {
+      toast.error('Sign in to add to cart')
+      return
+    }
+    const cartKey = variantId ? `${product.id}:${variantId}` : product.id
+    setAddingId(cartKey)
+    try {
+      const { data } = await cartAPI.addItem(product.id, variantId, 1)
+      setCart(data.cart)
+      setAddedIds(prev => new Set(prev).add(cartKey))
+      setOpen(true)
+      const variantName = variantId
+        ? product.variants?.find((v: any) => v.id === variantId)?.name ?? product.matchedVariant?.name
+        : null
+      toast.success(`${product.name}${variantName ? ` — ${variantName}` : ''} added to cart!`)
+    } catch {
+      toast.error('Could not add to cart')
+    } finally {
+      setAddingId(null)
+    }
+  }
 
   const toggleMakeup = (type: MakeupType, shade: ShadeData) => {
     setSelectedMakeup(prev => ({
@@ -1233,16 +1308,61 @@ export default function TryOnPage() {
                               </p>
                             </div>
                           </div>
-                          {selectedMakeup[activeTab]!.productLink ? (
-                            <a href={selectedMakeup[activeTab]!.productLink} target="_blank" rel="noopener noreferrer"
-                              className="flex items-center justify-between gap-2 bg-champagne/8 border border-champagne/20 px-3 py-2 hover:bg-champagne/15 hover:border-champagne/40 transition-all group">
-                              <div className="min-w-0 flex-1">
-                                <p className="font-sans text-[10px] text-champagne leading-tight truncate">{selectedMakeup[activeTab]!.productName}</p>
-                                <p className="font-sans text-[9px] text-ivory/40 mt-0.5">{selectedMakeup[activeTab]!.brand}{selectedMakeup[activeTab]!.price ? ` · $${selectedMakeup[activeTab]!.price.toFixed(2)}` : ''}</p>
+                          {loadingMatches[activeTab] ? (
+                            <div className="flex items-center gap-2 px-3 py-2 bg-champagne/5 border border-champagne/10">
+                              <Loader2 size={10} className="animate-spin text-champagne/50" />
+                              <span className="font-sans text-[10px] text-ivory/40">Finding in store…</span>
+                            </div>
+                          ) : storeMatches[activeTab]?.[0] ? (() => {
+                            const sp = storeMatches[activeTab][0]
+                            const mv = sp.matchedVariant
+                            const cartKey = mv ? `${sp.id}:${mv.id}` : sp.id
+                            return (
+                              <div className="bg-champagne/8 border border-champagne/20">
+                                {sp.primaryImage && (
+                                  <div className="relative">
+                                    <img src={sp.primaryImage} alt={sp.name} className="w-full h-20 object-cover" />
+                                    {mv?.shadeHex && (
+                                      <span className="absolute bottom-2 right-2 w-5 h-5 rounded-full border-2 border-ivory/60 shadow-md"
+                                        style={{ background: mv.shadeHex }} title={mv.name} />
+                                    )}
+                                  </div>
+                                )}
+                                <div className="px-3 py-2">
+                                  <p className="font-sans text-[10px] text-champagne leading-tight truncate">{sp.name}</p>
+                                  {mv && (
+                                    <div className="flex items-center gap-1.5 mt-0.5 mb-1">
+                                      <span className="w-2.5 h-2.5 rounded-full flex-shrink-0"
+                                        style={{ background: mv.shadeHex || selectedMakeup[activeTab]!.hex }} />
+                                      <p className="font-sans text-[9px] text-ivory/60 truncate">{mv.name}</p>
+                                    </div>
+                                  )}
+                                  <p className="font-sans text-[9px] text-ivory/40 mt-0.5 mb-2">
+                                    {sp.brand?.name ?? sp.brand ?? ''}{sp.price ? ` · $${Number(sp.price).toFixed(2)}` : ''}
+                                  </p>
+                                  <div className="flex gap-1.5">
+                                    <button
+                                      onClick={() => addToCart(sp, mv?.id)}
+                                      disabled={addingId === cartKey}
+                                      className="flex-1 flex items-center justify-center gap-1 py-1.5 font-sans text-[9px] tracking-widest uppercase transition-all disabled:opacity-50"
+                                      style={{ background: addedIds.has(cartKey) ? '#4A7A4A' : '#C6A9A3', color: '#0D0B0A' }}
+                                    >
+                                      {addingId === cartKey
+                                        ? <Loader2 size={9} className="animate-spin" />
+                                        : addedIds.has(cartKey)
+                                          ? <><Check size={9} /> Added</>
+                                          : <><ShoppingBag size={9} /> Add to Cart</>
+                                      }
+                                    </button>
+                                    <Link href={`/products/${sp.slug}`}
+                                      className="px-2.5 py-1.5 font-sans text-[9px] tracking-widest uppercase border border-champagne/30 text-champagne/70 hover:text-champagne hover:border-champagne transition-colors">
+                                      View
+                                    </Link>
+                                  </div>
+                                </div>
                               </div>
-                              <ShoppingBag size={12} className="text-champagne/60 group-hover:text-champagne transition-colors flex-shrink-0" />
-                            </a>
-                          ) : selectedMakeup[activeTab]!.productName ? (
+                            )
+                          })() : selectedMakeup[activeTab]!.productName ? (
                             <div className="flex items-center justify-between gap-2 bg-champagne/5 border border-champagne/10 px-3 py-2">
                               <div className="min-w-0 flex-1">
                                 <p className="font-sans text-[10px] text-champagne/70 leading-tight truncate">{selectedMakeup[activeTab]!.productName}</p>
@@ -1301,48 +1421,96 @@ export default function TryOnPage() {
                       transition={{ duration: 0.2 }}
                       className="overflow-hidden"
                     >
-                      <div className="space-y-1">
+                      <div className="space-y-3">
                         {Object.entries(selectedMakeup)
                           .filter(([, v]) => v)
-                          .map(([type, val]) => val && (
-                            val.productLink ? (
-                              <a
-                                key={type}
-                                href={val.productLink}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="flex items-center gap-2.5 px-2 py-2 hover:bg-champagne/8 transition-colors group border border-transparent hover:border-champagne/15"
-                              >
-                                <span className="w-3.5 h-3.5 rounded-full flex-shrink-0 border border-ivory/20"
-                                  style={{ background: val.hex }} />
-                                <div className="flex-1 min-w-0">
-                                  <p className="font-sans text-[10px] text-ivory/70 group-hover:text-champagne transition-colors leading-tight truncate">
-                                    {val.productName}
-                                  </p>
-                                  <p className="font-sans text-[9px] text-ivory/35">{val.brand}</p>
-                                </div>
-                                {val.price > 0 && (
-                                  <span className="font-sans text-[10px] text-champagne font-medium flex-shrink-0">
-                                    ${val.price.toFixed(2)}
-                                  </span>
+                          .map(([type, val]) => {
+                            const sp = storeMatches[type]?.[0]
+                            const isLoading = loadingMatches[type]
+                            return val && (
+                              <div key={type} className="border border-champagne/20 bg-noir/50 overflow-hidden">
+                                {/* Product image or shade strip */}
+                                {sp?.primaryImage ? (
+                                  <div className="relative">
+                                    <img src={sp.primaryImage} alt={sp.name}
+                                      className="w-full h-28 object-cover" />
+                                    <div className="absolute top-2 left-2 px-1.5 py-0.5 bg-noir/70 backdrop-blur-sm">
+                                      <p className="font-sans text-[8px] tracking-widest uppercase text-champagne">{shades[type]?.label ?? type}</p>
+                                    </div>
+                                    {/* Show matched shade swatch vs tried shade */}
+                                    <div className="absolute top-2 right-2 flex items-center gap-1">
+                                      <span className="w-4 h-4 rounded-full border-2 border-ivory/60 shadow"
+                                        style={{ background: val.hex }} title="Shade you tried" />
+                                      {sp.matchedVariant?.shadeHex && sp.matchedVariant.shadeHex !== val.hex && (
+                                        <span className="w-4 h-4 rounded-full border-2 border-champagne/80 shadow"
+                                          style={{ background: sp.matchedVariant.shadeHex }} title={`Closest in store: ${sp.matchedVariant.name}`} />
+                                      )}
+                                    </div>
+                                  </div>
+                                ) : (
+                                  <div className="h-10 w-full relative" style={{ background: val.hex + '55' }}>
+                                    <div className="absolute inset-0 flex items-center px-3 gap-2">
+                                      <span className="w-4 h-4 rounded-full border border-ivory/30 flex-shrink-0"
+                                        style={{ background: val.hex }} />
+                                      <p className="font-sans text-[10px] tracking-widest uppercase text-ivory/60">{shades[type]?.label ?? type}</p>
+                                    </div>
+                                  </div>
                                 )}
-                              </a>
-                            ) : (
-                              <div key={type}
-                                className="flex items-center gap-2.5 px-2 py-2 border border-transparent opacity-60">
-                                <span className="w-3.5 h-3.5 rounded-full flex-shrink-0 border border-ivory/20"
-                                  style={{ background: val.hex }} />
-                                <div className="flex-1 min-w-0">
-                                  <p className="font-sans text-[10px] text-ivory/50 leading-tight truncate">{val.productName}</p>
-                                  <p className="font-sans text-[9px] text-ivory/30">{val.brand}</p>
+
+                                <div className="p-2.5">
+                                  {isLoading && !sp ? (
+                                    <div className="flex items-center gap-2 py-1">
+                                      <Loader2 size={10} className="animate-spin text-champagne/50" />
+                                      <span className="font-sans text-[10px] text-ivory/40">Finding in store…</span>
+                                    </div>
+                                  ) : sp ? (() => {
+                                    const mv = sp.matchedVariant
+                                    const cartKey = mv ? `${sp.id}:${mv.id}` : sp.id
+                                    return (
+                                    <>
+                                      <p className="font-sans text-[10px] text-ivory/90 leading-tight truncate mb-0.5">{sp.name}</p>
+                                      {mv && (
+                                        <div className="flex items-center gap-1.5 mb-1">
+                                          <span className="w-2.5 h-2.5 rounded-full flex-shrink-0"
+                                            style={{ background: mv.shadeHex || val.hex }} />
+                                          <p className="font-sans text-[9px] text-ivory/60 truncate">{mv.name}</p>
+                                        </div>
+                                      )}
+                                      <p className="font-sans text-[9px] text-ivory/40 mb-2.5">
+                                        {sp.brand?.name ?? sp.brand ?? ''}{sp.price ? ` · $${Number(sp.price).toFixed(2)}` : ''}
+                                      </p>
+                                      <div className="flex gap-1.5">
+                                        <button
+                                          onClick={() => addToCart(sp, mv?.id)}
+                                          disabled={addingId === cartKey}
+                                          className="flex-1 flex items-center justify-center gap-1 py-1.5 font-sans text-[9px] tracking-widest uppercase transition-all disabled:opacity-50"
+                                          style={{ background: addedIds.has(cartKey) ? '#4A7A4A' : '#C6A9A3', color: '#0D0B0A' }}
+                                        >
+                                          {addingId === cartKey
+                                            ? <Loader2 size={9} className="animate-spin" />
+                                            : addedIds.has(cartKey)
+                                              ? <><Check size={9} /> Added</>
+                                              : <><ShoppingBag size={9} /> Add to Cart</>
+                                          }
+                                        </button>
+                                        <Link href={`/products/${sp.slug}`}
+                                          className="px-2.5 py-1.5 font-sans text-[9px] tracking-widest uppercase border border-champagne/30 text-champagne/70 hover:text-champagne hover:border-champagne transition-colors">
+                                          View
+                                        </Link>
+                                      </div>
+                                    </>
+                                    )
+                                  })() : (
+                                    <div className="py-1">
+                                      <p className="font-sans text-[10px] text-ivory/50 truncate">{val.productName || val.name}</p>
+                                      <p className="font-sans text-[9px] text-ivory/30">{val.brand}</p>
+                                    </div>
+                                  )}
                                 </div>
                               </div>
                             )
-                          ))}
+                          })}
                       </div>
-                      <p className="font-sans text-[9px] text-ivory/30 mt-2 text-center">
-                        Click a product to shop on the brand's site
-                      </p>
                     </motion.div>
                   )}
                 </AnimatePresence>

@@ -92,7 +92,7 @@ def refresh():
 @jwt_required()
 def get_profile():
     user_id = get_jwt_identity()
-    user = User.query.get(user_id)
+    user = db.session.get(User, user_id)
     if not user:
         return jsonify({'error': 'User not found'}), 404
     return jsonify({'user': user.to_dict()})
@@ -102,7 +102,7 @@ def get_profile():
 @jwt_required()
 def update_profile():
     user_id = get_jwt_identity()
-    user = User.query.get(user_id)
+    user = db.session.get(User, user_id)
     if not user:
         return jsonify({'error': 'User not found'}), 404
 
@@ -125,7 +125,7 @@ def update_profile():
 @jwt_required()
 def change_password():
     user_id = get_jwt_identity()
-    user = User.query.get(user_id)
+    user = db.session.get(User, user_id)
     data = request.get_json()
 
     if not user.check_password(data.get('currentPassword', '')):
@@ -144,7 +144,7 @@ def change_password():
 @jwt_required()
 def get_recommendations():
     user_id = get_jwt_identity()
-    user = User.query.get(user_id)
+    user = db.session.get(User, user_id)
     if not user:
         return jsonify({'recommendations': []})
 
@@ -153,7 +153,7 @@ def get_recommendations():
 
     products = []
     for pid in product_ids[-20:]:
-        p = Product.query.get(pid)
+        p = db.session.get(Product, pid)
         if p and p.is_active:
             products.append({
                 'id': str(p.id),

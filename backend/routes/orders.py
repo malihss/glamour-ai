@@ -16,6 +16,14 @@ def generate_order_number():
     return f"GA-{datetime.utcnow().strftime('%Y%m')}-{str(uuid.uuid4())[:8].upper()}"
 
 
+def validate_address(addr, label):
+    required = ['street', 'city', 'state', 'postalCode']
+    missing = [f for f in required if not str(addr.get(f, '')).strip()]
+    if missing:
+        return f'{label}: missing {", ".join(missing)}'
+    return None
+
+
 @orders_bp.route('/', methods=['GET'])
 @jwt_required()
 def list_orders():
@@ -54,12 +62,25 @@ def checkout():
 
     cart = Cart.query.filter_by(user_id=user_id).first()
     if not cart or not cart.items:
-        return jsonify({'error': 'Cart is empty'}), 400
+        return jsonify({'error': 'Your cart is empty'}), 400
 
-    required_fields = ['shippingAddress', 'billingAddress']
-    for field in required_fields:
-        if not data.get(field):
-            return jsonify({'error': f'{field} is required'}), 400
+    # Validate address fields
+    shipping_addr = data.get('shippingAddress') or {}
+    billing_addr  = data.get('billingAddress')  or {}
+    err = validate_address(shipping_addr, 'Shipping address')
+    if err:
+        return jsonify({'error': err}), 400
+    err = validate_address(billing_addr, 'Billing address')
+    if err:
+        return jsonify({'error': err}), 400
+
+    # Validate all cart products are still active
+    for item in cart.items:
+        if not item.product or not item.product.is_active:
+            name = item.product.name if item.product else 'A product'
+            return jsonify({'error': f'"{name}" is no longer available. Please remove it from your cart.'}), 400
+        if item.product.stock_quantity is not None and item.product.stock_quantity < item.quantity:
+            return jsonify({'error': f'Not enough stock for "{item.product.name}". Only {item.product.stock_quantity} left.'}), 400
 
     subtotal = float(cart.total())
     tax_rate = 0.08  # 8% tax

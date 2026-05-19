@@ -40,19 +40,11 @@ function getFallback(catSlug?: string, productId?: string): string {
 export function ProductCard({ product, index = 0 }: Props) {
   const [addingToCart, setAddingToCart] = useState(false)
   const [hovered, setHovered]           = useState(false)
-  const [starHover, setStarHover]       = useState(0)
   const [imgSrc, setImgSrc]             = useState(product.primaryImage || '')
   const { setCart, setOpen }            = useCartStore()
   const { toggleItem, hasItem }         = useWishlistStore()
   const { isAuthenticated }             = useAuthStore()
-  const { rate, getAvg, getCount, getUserRating } = useRatingsStore()
   const isWishlisted                    = hasItem(product.id)
-
-  const localAvg   = getAvg(product.id)
-  const localCount = getCount(product.id)
-  const userRating = getUserRating(product.id)
-  const displayAvg   = localAvg ?? product.avgRating ?? null
-  const displayCount = localCount + (localCount === 0 ? (product.reviewCount ?? 0) : 0)
 
   const handleAddToCart = async (e: React.MouseEvent) => {
     e.preventDefault()
@@ -208,43 +200,26 @@ export function ProductCard({ product, index = 0 }: Props) {
             {product.name}
           </h3>
 
-          {/* Rating — interactive */}
-          <div className="flex items-center gap-1.5 mb-2.5">
-            <div className="flex gap-0.5">
-              {[1, 2, 3, 4, 5].map(s => {
-                const active = s <= (starHover || Math.round(displayAvg ?? 0))
-                const isOwn  = s <= (userRating ?? 0)
-                return (
-                  <button
-                    key={s}
-                    type="button"
-                    onClick={e => { e.preventDefault(); e.stopPropagation(); rate(product.id, s) }}
-                    onMouseEnter={e => { e.preventDefault(); setStarHover(s) }}
-                    onMouseLeave={e => { e.preventDefault(); setStarHover(0) }}
-                    className="transition-transform hover:scale-125 focus:outline-none"
-                    title={`Rate ${s} star${s > 1 ? 's' : ''}`}
-                  >
-                    <Star
-                      size={11}
-                      style={{
-                        fill:  starHover > 0 ? (s <= starHover ? '#C6A9A3' : '#EDE5E3')
-                             : isOwn         ? '#C6A9A3'
-                             : active        ? '#C6A9A3'
-                             : '#EDE5E3',
-                        color: starHover > 0 ? (s <= starHover ? '#C6A9A3' : '#EDE5E3')
-                             : isOwn         ? '#C6A9A3'
-                             : active        ? '#C6A9A3'
-                             : '#EDE5E3',
-                      }}
-                    />
-                  </button>
-                )
-              })}
+          {/* Rating */}
+          {product.avgRating != null ? (
+            <div className="flex items-center gap-1.5 mb-2.5">
+              <div className="flex gap-0.5">
+                {Array.from({ length: 5 }, (_, i) => i + 1).map(s => (
+                  <Star key={s} size={10}
+                    style={{
+                      fill: s <= Math.round(product.avgRating!) ? '#C6A9A3' : '#EDE5E3',
+                      color: s <= Math.round(product.avgRating!) ? '#C6A9A3' : '#EDE5E3',
+                    }}
+                  />
+                ))}
+              </div>
+              <span className="font-sans text-[10px]" style={{ color: '#A89E99' }}>
+                ({product.reviewCount})
+              </span>
             </div>
-            <span className="font-sans text-[10px]" style={{ color: '#A89E99' }}>
-              {displayAvg != null ? `${displayAvg.toFixed(1)} ` : ''}({displayCount})
-            </span>
-          </div>
+          ) : (
+            <div className="mb-2.5" />
+          )}
 
           {/* Shade swatches */}
           {product.variants && product.variants.length > 0 && product.variants[0]?.shadeHex && (

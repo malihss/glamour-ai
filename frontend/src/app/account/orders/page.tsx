@@ -33,7 +33,7 @@ export default function OrdersPage() {
   )
 
   return (
-    <div className="pt-[88px] min-h-screen">
+    <div className="pt-[88px] min-h-screen bg-ivory">
       <div className="max-w-screen-xl mx-auto px-4 md:px-8 py-16">
         <div className="grid grid-cols-1 md:grid-cols-4 gap-12">
           {/* Sidebar */}

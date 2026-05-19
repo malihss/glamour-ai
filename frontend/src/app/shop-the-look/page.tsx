@@ -99,7 +99,7 @@ const LOOKS: Look[] = [
     name: 'French Girl',
     subtitle: 'Effortless Parisian chic',
     vibe: 'Parisian · Minimal · Romantic',
-    model: 'https://images.unsplash.com/photo-1561069934-eee225952461?w=700&q=90',
+    model: 'https://images.unsplash.com/photo-1529626455594-4ff0802cfb7e?w=700&q=90',
     palette: ['#F0D5BE', '#E8A0A0', '#C08060'],
     makeup: {
       foundation: { hex: '#F0D5BE', opacity: 0.18 },
@@ -568,10 +568,10 @@ export default function ShopTheLookPage() {
 
   // ── Render ────────────────────────────────────────────────────────────────
   return (
-    <div className="pt-[88px] min-h-screen" style={{ background: '#0D0B0A' }}>
+    <div className="pt-[88px] min-h-screen" style={{ background: '#FAF8F6' }}>
 
       {/* ── Hero ─────────────────────────────────────────────────────────── */}
-      <section className="py-20 text-center" style={{ borderBottom: '1px solid rgba(198,169,163,0.10)' }}>
+      <section className="py-20 text-center" style={{ borderBottom: '1px solid rgba(198,169,163,0.20)' }}>
         <motion.div initial={{ opacity: 0, y: 24 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.6 }}>
           <div className="flex items-center justify-center gap-2.5 mb-5">
             <span className="h-px w-10" style={{ background: '#C6A9A3' }} />
@@ -582,11 +582,11 @@ export default function ShopTheLookPage() {
             <Sparkles size={11} style={{ color: '#C6A9A3' }} />
             <span className="h-px w-10" style={{ background: '#C6A9A3' }} />
           </div>
-          <h1 className="font-display text-6xl md:text-7xl mb-5" style={{ color: '#F5F0EC' }}>
+          <h1 className="font-display text-6xl md:text-7xl mb-5" style={{ color: '#3E3A39' }}>
             Shop the{' '}
             <em className="not-italic" style={{ color: '#C6A9A3' }}>Look</em>
           </h1>
-          <p className="font-serif text-xl max-w-lg mx-auto leading-relaxed" style={{ color: 'rgba(245,240,236,0.40)' }}>
+          <p className="font-serif text-xl max-w-lg mx-auto leading-relaxed" style={{ color: 'rgba(62,58,57,0.50)' }}>
             Choisissez un look éditorial, uploadez votre photo — et shopez chaque produit en un clic.
           </p>
         </motion.div>
@@ -595,7 +595,7 @@ export default function ShopTheLookPage() {
       {/* ── Look selector carousel ────────────────────────────────────────── */}
       <section
         className="overflow-x-auto py-8 px-4 md:px-8 scrollbar-hide"
-        style={{ borderBottom: '1px solid rgba(198,169,163,0.08)' }}
+        style={{ borderBottom: '1px solid rgba(198,169,163,0.20)', background: '#FAF8F6' }}
       >
         <div className="flex gap-4 mx-auto" style={{ width: 'max-content', maxWidth: '100%' }}>
           {LOOKS.map((look, i) => (
@@ -628,7 +628,7 @@ export default function ShopTheLookPage() {
                 />
                 <div
                   className="absolute inset-0 pointer-events-none"
-                  style={{ background: 'linear-gradient(to top, rgba(13,11,10,0.88) 0%, rgba(13,11,10,0.15) 55%, transparent 100%)' }}
+                  style={{ background: 'linear-gradient(to top, rgba(30,25,22,0.80) 0%, rgba(30,25,22,0.08) 55%, transparent 100%)' }}
                 />
 
                 {activeLook.id === look.id && (
@@ -637,7 +637,7 @@ export default function ShopTheLookPage() {
                     className="absolute top-3 right-3 w-6 h-6 rounded-full flex items-center justify-center"
                     style={{ background: '#C6A9A3' }}
                   >
-                    <Check size={11} style={{ color: '#0D0B0A' }} />
+                    <Check size={11} style={{ color: '#fff' }} />
                   </motion.div>
                 )}
 
@@ -657,7 +657,7 @@ export default function ShopTheLookPage() {
 
               <p
                 className="mt-2 font-sans text-[10px] tracking-wider text-center transition-colors"
-                style={{ color: activeLook.id === look.id ? '#C6A9A3' : 'rgba(245,240,236,0.35)' }}
+                style={{ color: activeLook.id === look.id ? '#C6A9A3' : 'rgba(62,58,57,0.45)' }}
               >
                 {look.vibe.split(' · ')[0]}
               </p>
@@ -675,14 +675,14 @@ export default function ShopTheLookPage() {
             <p className="font-sans text-[10px] tracking-[0.32em] uppercase mb-2" style={{ color: '#C6A9A3' }}>
               {activeLook.vibe}
             </p>
-            <h2 className="font-display text-4xl mb-1" style={{ color: '#F5F0EC' }}>{activeLook.name}</h2>
-            <p className="font-serif text-lg mb-8" style={{ color: 'rgba(245,240,236,0.40)' }}>{activeLook.subtitle}</p>
+            <h2 className="font-display text-4xl mb-1" style={{ color: '#3E3A39' }}>{activeLook.name}</h2>
+            <p className="font-serif text-lg mb-8" style={{ color: 'rgba(62,58,57,0.50)' }}>{activeLook.subtitle}</p>
           </motion.div>
 
           {/* Preview image */}
           <div
             className="relative mb-5 overflow-hidden"
-            style={{ borderRadius: 20, aspectRatio: '3/4', background: '#1A1614' }}
+            style={{ borderRadius: 20, aspectRatio: '3/4', background: '#EDE8E3' }}
           >
             <AnimatePresence mode="wait">
               {processedImg ? (
@@ -713,7 +713,7 @@ export default function ShopTheLookPage() {
             {!uploadedImg && (
               <div
                 className="absolute inset-0 pointer-events-none"
-                style={{ background: 'linear-gradient(to top, rgba(13,11,10,0.55) 0%, transparent 45%)' }}
+                style={{ background: 'linear-gradient(to top, rgba(62,58,57,0.45) 0%, transparent 45%)' }}
               />
             )}
 
@@ -723,13 +723,13 @@ export default function ShopTheLookPage() {
                 <motion.div
                   initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
                   className="absolute inset-0 flex flex-col items-center justify-center"
-                  style={{ background: 'rgba(13,11,10,0.80)', backdropFilter: 'blur(8px)' }}
+                  style={{ background: 'rgba(245,240,236,0.88)', backdropFilter: 'blur(8px)' }}
                 >
                   <Loader2 size={36} className="animate-spin mb-4" style={{ color: '#C6A9A3' }} />
                   <p className="font-sans text-[10px] tracking-[0.3em] uppercase" style={{ color: '#C6A9A3' }}>
                     Application du look…
                   </p>
-                  <p className="font-sans text-[9px] mt-1" style={{ color: 'rgba(245,240,236,0.35)' }}>
+                  <p className="font-sans text-[9px] mt-1" style={{ color: 'rgba(62,58,57,0.45)' }}>
                     Détection du visage en cours
                   </p>
                 </motion.div>
@@ -740,9 +740,9 @@ export default function ShopTheLookPage() {
             {!uploadedImg && (
               <div
                 className="absolute bottom-4 left-4 px-3 py-1.5"
-                style={{ background: 'rgba(13,11,10,0.70)', backdropFilter: 'blur(6px)', borderRadius: 8, border: '1px solid rgba(198,169,163,0.20)' }}
+                style={{ background: 'rgba(255,255,255,0.85)', backdropFilter: 'blur(6px)', borderRadius: 8, border: '1px solid rgba(198,169,163,0.20)' }}
               >
-                <p className="font-display text-sm" style={{ color: '#F5F0EC' }}>{activeLook.name}</p>
+                <p className="font-display text-sm" style={{ color: '#3E3A39' }}>{activeLook.name}</p>
               </div>
             )}
 
@@ -751,7 +751,7 @@ export default function ShopTheLookPage() {
               <button
                 onClick={() => { setUploadedImg(null); setProcessedImg(null) }}
                 className="absolute top-4 right-4 p-2 rounded-full transition-colors"
-                style={{ background: 'rgba(13,11,10,0.70)', backdropFilter: 'blur(4px)', color: 'rgba(245,240,236,0.60)' }}
+                style={{ background: 'rgba(255,255,255,0.85)', backdropFilter: 'blur(4px)', color: 'rgba(62,58,57,0.60)' }}
               >
                 <X size={14} />
               </button>
@@ -786,7 +786,7 @@ export default function ShopTheLookPage() {
             }}
           >
             <Upload size={14} style={{ color: isDragging ? '#C6A9A3' : 'rgba(198,169,163,0.50)' }} />
-            <span className="font-sans text-xs tracking-wider" style={{ color: 'rgba(245,240,236,0.38)' }}>
+            <span className="font-sans text-xs tracking-wider" style={{ color: 'rgba(62,58,57,0.45)' }}>
               {uploadedImg ? 'Remplacer la photo' : 'Uploadez votre photo — essayez le look sur vous'}
             </span>
             <input
@@ -814,7 +814,7 @@ export default function ShopTheLookPage() {
               <p className="font-sans text-[10px] tracking-[0.32em] uppercase mb-2" style={{ color: '#C6A9A3' }}>
                 Complete the Look
               </p>
-              <h2 className="font-display text-4xl" style={{ color: '#F5F0EC' }}>
+              <h2 className="font-display text-4xl" style={{ color: '#3E3A39' }}>
                 Shop This Look
               </h2>
             </div>
@@ -844,14 +844,14 @@ export default function ShopTheLookPage() {
                 <div
                   key={i}
                   className="animate-pulse"
-                  style={{ borderRadius: 16, background: '#1A1614', height: 300 }}
+                  style={{ borderRadius: 16, background: '#E8E2DD', height: 300 }}
                 />
               ))}
             </div>
           ) : products.length === 0 ? (
             <div className="text-center py-24">
-              <ImageIcon size={36} className="mx-auto mb-4" style={{ color: 'rgba(245,240,236,0.12)' }} />
-              <p className="font-serif mb-4" style={{ color: 'rgba(245,240,236,0.30)' }}>
+              <ImageIcon size={36} className="mx-auto mb-4" style={{ color: 'rgba(62,58,57,0.18)' }} />
+              <p className="font-serif mb-4" style={{ color: 'rgba(62,58,57,0.40)' }}>
                 Aucun produit trouvé pour ce look.
               </p>
               <Link
@@ -871,7 +871,7 @@ export default function ShopTheLookPage() {
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ delay: i * 0.07, duration: 0.40 }}
                   className="group relative overflow-hidden"
-                  style={{ borderRadius: 16, background: '#1A1614', border: '1px solid rgba(198,169,163,0.08)' }}
+                  style={{ borderRadius: 16, background: '#FFFFFF', border: '1px solid rgba(198,169,163,0.20)' }}
                 >
                   {/* Image */}
                   <div className="relative overflow-hidden" style={{ aspectRatio: '1/1' }}>
@@ -884,16 +884,16 @@ export default function ShopTheLookPage() {
                     ) : (
                       <div
                         className="w-full h-full flex items-center justify-center"
-                        style={{ background: '#221E1C' }}
+                        style={{ background: '#F0ECE8' }}
                       >
-                        <ImageIcon size={28} style={{ color: 'rgba(245,240,236,0.10)' }} />
+                        <ImageIcon size={28} style={{ color: 'rgba(62,58,57,0.15)' }} />
                       </div>
                     )}
 
                     {/* Bottom gradient */}
                     <div
                       className="absolute inset-0 pointer-events-none"
-                      style={{ background: 'linear-gradient(to top, rgba(26,22,20,0.95) 0%, transparent 55%)' }}
+                      style={{ background: 'linear-gradient(to top, rgba(245,240,236,0.85) 0%, transparent 55%)' }}
                     />
 
                     {/* Add to bag — slides up */}
@@ -923,12 +923,12 @@ export default function ShopTheLookPage() {
                     )}
                     <p
                       className="font-sans text-xs leading-snug line-clamp-2 mb-3"
-                      style={{ color: 'rgba(245,240,236,0.80)' }}
+                      style={{ color: 'rgba(62,58,57,0.80)' }}
                     >
                       {p.name}
                     </p>
                     <div className="flex items-center justify-between">
-                      <span className="font-sans text-sm font-semibold" style={{ color: '#F5F0EC' }}>
+                      <span className="font-sans text-sm font-semibold" style={{ color: '#3E3A39' }}>
                         ${p.price?.toFixed(2)}
                       </span>
                       <Link

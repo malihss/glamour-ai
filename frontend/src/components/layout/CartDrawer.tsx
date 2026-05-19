@@ -32,11 +32,18 @@ export function CartDrawer() {
   }
 
   const handleUpdateQty = async (itemId: string, quantity: number) => {
+    if (cart) {
+      const items = cart.items.map(i =>
+        i.id === itemId ? { ...i, quantity, totalPrice: i.unitPrice * quantity } : i
+      )
+      setCart({ ...cart, items, itemCount: items.reduce((s, i) => s + i.quantity, 0), subtotal: items.reduce((s, i) => s + i.totalPrice, 0) })
+    }
     try {
       const { data } = await cartAPI.updateItem(itemId, quantity)
       setCart(data.cart)
     } catch {
       toast.error('Failed to update quantity')
+      cartAPI.get().then(({ data }) => setCart(data.cart)).catch(() => {})
     }
   }
 

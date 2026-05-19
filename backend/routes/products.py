@@ -5,9 +5,26 @@ routes/products.py — Product catalog endpoints
 from flask import Blueprint, request, jsonify
 from flask_jwt_extended import jwt_required, get_jwt_identity, verify_jwt_in_request
 from extensions import db
-from models import Product, Category, Brand, Review, Wishlist, UserInteraction
+from models import Product, ProductVariant, Category, Brand, Review, Wishlist, UserInteraction
 from sqlalchemy import or_, func, desc, asc
 import uuid
+import math
+
+
+def _hex_distance(h1: str, h2: str) -> float:
+    """Euclidean RGB distance between two hex color strings."""
+    def parse(h):
+        h = h.lstrip('#')
+        if len(h) != 6:
+            return None
+        try:
+            return int(h[0:2], 16), int(h[2:4], 16), int(h[4:6], 16)
+        except ValueError:
+            return None
+    p1, p2 = parse(h1), parse(h2)
+    if not p1 or not p2:
+        return math.inf
+    return math.sqrt(sum((a - b) ** 2 for a, b in zip(p1, p2)))
 
 products_bp = Blueprint('products', __name__)
 
@@ -26,6 +43,7 @@ def list_products():
     order = request.args.get('order', 'desc')
     tags = request.args.getlist('tags')
     ids_param = request.args.get('ids', '')
+    shade_hex  = request.args.get('shade_hex', '').strip()
 
     query = Product.query.filter_by(is_active=True)
 
@@ -88,8 +106,28 @@ def list_products():
 
     pagination = query.paginate(page=page, per_page=per_page, error_out=False)
 
+    products_out = []
+    for p in pagination.items:
+        d = p.to_dict()
+        if shade_hex:
+            # Attach the closest-color variant when variants with hex values exist.
+            # Products without hex variants (mascara, eyeliner, etc.) are still
+            # included — they just won't have a matchedVariant annotation.
+            active_variants = [v for v in p.variants if v.is_active and v.shade_hex]
+            if active_variants:
+                best = min(active_variants, key=lambda v: _hex_distance(shade_hex, v.shade_hex))
+                dist = _hex_distance(shade_hex, best.shade_hex)
+                d['matchedVariant'] = best.to_dict()
+                d['matchedVariant']['colorDistance'] = dist
+        products_out.append(d)
+
+    # When shade requested: products with a close color match float to the top;
+    # products without hex variants (single-shade items) go to the bottom.
+    if shade_hex:
+        products_out.sort(key=lambda d: d.get('matchedVariant', {}).get('colorDistance', math.inf))
+
     return jsonify({
-        'products': [p.to_dict() for p in pagination.items],
+        'products': products_out,
         'pagination': {
             'page': page,
             'perPage': per_page,
@@ -192,7 +230,7 @@ def add_review(product_id):
     user_id = get_jwt_identity()
     data = request.get_json()
 
-    product = Product.query.get(product_id)
+    product = db.session.get(Product, product_id)
     if not product:
         return jsonify({'error': 'Product not found'}), 404
 

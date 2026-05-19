@@ -207,7 +207,7 @@ def _product_row(p):
 def get_product(product_id):
     err = require_admin()
     if err: return err
-    p = Product.query.get(product_id)
+    p = db.session.get(Product, product_id)
     if not p:
         return jsonify({'error': 'Not found'}), 404
     data = p.to_dict(include_details=True)
@@ -289,7 +289,7 @@ def update_product(product_id):
     err = require_admin()
     if err: return err
 
-    p = Product.query.get(product_id)
+    p = db.session.get(Product, product_id)
     if not p:
         return jsonify({'error': 'Not found'}), 404
 
@@ -339,7 +339,7 @@ def update_product(product_id):
 def delete_product(product_id):
     err = require_admin()
     if err: return err
-    p = Product.query.get(product_id)
+    p = db.session.get(Product, product_id)
     if not p:
         return jsonify({'error': 'Not found'}), 404
     p.is_active = False
@@ -406,7 +406,7 @@ def _order_row(o):
 def get_order(order_id):
     err = require_admin()
     if err: return err
-    o = Order.query.get(order_id)
+    o = db.session.get(Order, order_id)
     if not o:
         return jsonify({'error': 'Not found'}), 404
 
@@ -438,7 +438,7 @@ def get_order(order_id):
 def update_order_status(order_id):
     err = require_admin()
     if err: return err
-    o = Order.query.get(order_id)
+    o = db.session.get(Order, order_id)
     if not o:
         return jsonify({'error': 'Not found'}), 404
 
@@ -615,7 +615,7 @@ def consultant_get_client(user_id):
     err = require_consultant()
     if err: return err
 
-    u = User.query.get(user_id)
+    u = db.session.get(User, user_id)
     if not u:
         return jsonify({'error': 'User not found'}), 404
 
@@ -633,7 +633,7 @@ def consultant_get_client(user_id):
     recommended_products = []
     if recommended_ids:
         for pid in recommended_ids[-10:]:
-            p = Product.query.get(pid)
+            p = db.session.get(Product, pid)
             if p:
                 recommended_products.append({
                     'id': str(p.id),
@@ -691,7 +691,7 @@ def consultant_add_note(user_id):
     err = require_consultant()
     if err: return err
 
-    u = User.query.get(user_id)
+    u = db.session.get(User, user_id)
     if not u:
         return jsonify({'error': 'User not found'}), 404
 
@@ -719,7 +719,7 @@ def consultant_recommend(user_id):
     err = require_consultant()
     if err: return err
 
-    u = User.query.get(user_id)
+    u = db.session.get(User, user_id)
     if not u:
         return jsonify({'error': 'User not found'}), 404
 
@@ -728,7 +728,7 @@ def consultant_recommend(user_id):
     if not product_id:
         return jsonify({'error': 'productId required'}), 400
 
-    p = Product.query.get(product_id)
+    p = db.session.get(Product, product_id)
     if not p:
         return jsonify({'error': 'Product not found'}), 404
 
